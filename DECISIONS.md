@@ -1554,6 +1554,30 @@ had been exercised live); needs a real sync + a wait (or a manually
 backdated test row) to confirm the cast and predicate behave against
 actual Lakebase data, not just the mocked shape the tests assert against.
 
+### Bug found live: HNSW benchmark crashed against the deployed Databricks App
+First real attempt to run `notebooks/hnsw_benchmark.py` (against 167 real
+embedding rows) - crashed with `psycopg.errors.DuplicateTable: relation
+"idx_weather_embeddings_embedding" already exists` while recreating the
+index, right after the sequential-scan phase completed cleanly. Root
+cause: the app was live and deployed on Databricks by this point, and
+every route in app.py calls `ensure_weather_embeddings_table()` first -
+which runs `CREATE INDEX IF NOT EXISTS idx_weather_embeddings_embedding
+...`. If anything hits the live app (the UI's 60s stats poll, the hourly
+scheduled job, a manual request) during the window between the
+benchmark's `DROP INDEX` and its own plain `CREATE INDEX`, the app
+recreates the index first - and the benchmark's non-idempotent `CREATE
+INDEX` then collides with it. A real concurrency bug, only surfaced once
+there was a live, traffic-receiving deployment to race against - every
+earlier run of this script was against an idle local Lakebase with
+nothing else connected.
+
+**Fix:** changed the benchmark's recreate step to `CREATE INDEX IF NOT
+EXISTS`, matching the same idempotent pattern `ensure_weather_embeddings_table()`
+already uses. If the app wins the race and recreates it first, the
+benchmark just measures against that same index instead of erroring.
+107/107 tests still passing (no test asserted on the exact absence of
+`IF NOT EXISTS`). Not yet re-run against live data to get final numbers.
+
 ### Noted, not fixed: sync feels slow
 Expected, not a bug: each `/weather/sync` call does NWS API calls +
 Lakebase writes + CPU-only sentence-transformers embedding, all

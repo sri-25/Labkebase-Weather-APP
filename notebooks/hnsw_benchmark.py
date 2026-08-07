@@ -95,8 +95,14 @@ def run(queries_per_phase: int = 20) -> dict:
     without_index = _run_phase(vector_literals, queries_per_phase)
 
     print("Recreating HNSW index...")
+    # IF NOT EXISTS: if app.py (or the scheduled job) is live and gets hit
+    # while the index is dropped, ensure_weather_embeddings_table() will
+    # recreate it on its own via the same IF NOT EXISTS pattern - a plain
+    # CREATE INDEX here would then collide with a "relation already
+    # exists" error. Found live: running this benchmark against a
+    # deployed, actively-polled app hit exactly that race.
     lakebase.run_write(
-        "CREATE INDEX idx_weather_embeddings_embedding "
+        "CREATE INDEX IF NOT EXISTS idx_weather_embeddings_embedding "
         "ON weather_embeddings USING hnsw (embedding vector_cosine_ops)"
     )
 
