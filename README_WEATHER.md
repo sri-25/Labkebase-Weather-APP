@@ -33,7 +33,10 @@ scripts/reset_corpus.py         Wipes weather_documents/weather_embeddings (dest
 notebooks/sync_weather_job.py   Scheduled re-sync entrypoint (Databricks Job)
 notebooks/hnsw_benchmark.py     HNSW vs. sequential-scan latency benchmark
 llm_summary.py                LLM-generated summary over search results (RAG)
-tests/                        Automated pytest suite (100 tests, fully mocked)
+templates/index.html          Search/sync UI (optional convenience, not a required deliverable)
+resources/sync_weather_job.json  Databricks Jobs API definition for the scheduled sync
+app.yaml                      Databricks Apps entrypoint config (for hosting the UI persistently)
+tests/                        Automated pytest suite (107 tests, fully mocked)
 DECISIONS.md                  Full chronological log of decisions, gotchas, and verifications
 ```
 
@@ -173,7 +176,7 @@ Optional `"source_type": "alert"` or `""forecast"` narrows results to one type.
 
 ## Testing
 
-- **`tests/`** — 51 automated tests (pytest), all hermetic (no live network, no live DB, no real model download). `weather_client.py` and `chunking.py` are tested directly; `app.py` and the ingestion script both import `lakebase.py`, which requires live Databricks credentials just to *import* (it connects at module load time, not lazily) — worked around at the test level by injecting a fake `lakebase` module into `sys.modules` before import, rather than changing the production code.
+- **`tests/`** — 107 automated tests (pytest), all hermetic (no live network, no live DB, no real model download). `weather_client.py` and `chunking.py` are tested directly; `app.py` and the ingestion script both import `lakebase.py`, which requires live Databricks credentials just to *import* (it connects at module load time, not lazily) — worked around at the test level by injecting a fake `lakebase` module into `sys.modules` before import, rather than changing the production code.
 - **Manual smoke tests** — `scripts/verify_connection.py`, `scripts/verify_embedding_model.py` — for the two pieces that genuinely need live infrastructure (a real Lakebase connection, a real model download) and shouldn't run automatically in CI. Named `verify_` rather than `test_` specifically so plain `pytest` (run from the project root) never tries to collect them as automated tests.
 - **Live end-to-end verification** — every stage of the pipeline (`/weather/sync`, the ingestion script, `/weather/search`) was run against real NWS data and a real Lakebase instance, not just mocks. Full trail in `DECISIONS.md`.
 
@@ -182,19 +185,16 @@ Optional `"source_type": "alert"` or `""forecast"` narrows results to one type.
 - ~~Forecast document IDs go stale.~~ **Fixed.** The synthesized forecast ID is still stable across re-syncs *within* one NWS forecast cycle but changes when NWS regenerates the package (~twice daily) — but superseded periods are now deleted automatically (`cleanup_expired_forecasts()`, runs after every sync, deletes a forecast period once its own NWS-reported `endTime` has passed). Same cascade-delete mechanism as the existing alert cleanup. This closes a real risk: without it, a stale forecast could outscore the current one in search and get handed to the LLM summary as if it were current.
 - **Geocoding coverage.** Only 3 cities have static coordinates; everything else depends on the Census geocoder being reachable and returning a match. US-only.
 - **No embedding staleness detection.** If a document's `narrative_text` changes (e.g. an alert gets updated) but its `id` stays the same, the ingestion script's "find unembedded documents" query won't catch it, since it only looks for documents with *zero* embedding rows, not *outdated* ones. A content hash comparison would close this gap.
-- **Stretch goals not yet built:** scheduled Databricks Job for automatic re-sync, `GET /weather/search` with an LLM-generated summary (basic RAG), and an HNSW vs. no-index latency benchmark.
+- **HNSW benchmark not yet run against live data.** The script (`notebooks/hnsw_benchmark.py`) is written and unit-tested, but needs real row counts to produce a meaningful timing comparison — a small corpus can make a sequential scan look just as fast as the index, which is expected, not a bug, but still needs a real run to report honestly.
 - **Single embedding model, no re-embedding path.** If the model ever changes, `weather_embeddings.embedding` would need a new dimension and a full re-embed — there's no migration tooling for that yet.
 - **Small model, limited semantic precision on short text.** `all-MiniLM-L6-v2` is a small, general-purpose model, not fine-tuned on weather text. Live-observed example: a query for "rain" scored closer to unrelated air-quality alerts than to a "Severe Thunderstorm Watch" alert that was already fully embedded (confirmed via the ingestion script finding zero unembedded documents) — a real gap in this model's grasp of weather-domain vocabulary, not a retrieval bug. A larger or domain-tuned embedding model would likely narrow this.
 
-## Deliverables checklist
+## Stretch goals
 
-- [x] `weather_client.py` — NWS client + geocoding
-- [x] `app.py` — `POST /weather/sync`, `POST /weather/search`
-- [x] `lakebase.py` + `sql/*.sql` — DDL for `weather_documents`, `weather_embeddings`
-- [x] `notebooks/ingest_weather_embeddings.py` — psycopg3-based embedding pipeline
-- [x] `README_WEATHER.md`
-- [x] Upsert/dedup on `id` (base requirement, via `ON CONFLICT`)
-- [x] `source_type` filter on retrieval
-- [ ] Scheduled Databricks Job re-sync (stretch)
-- [ ] `GET /weather/search` with LLM summary (stretch)
-- [ ] HNSW benchmark (stretch)
+All three were built, not just attempted:
+
+`llm_summary.py` adds an optional LLM-generated summary over search results (`"summarize": true` on `POST /weather/search`), using Databricks Foundation Model APIs — live-verified against a real serving endpoint. `notebooks/sync_weather_job.py` + `resources/sync_weather_job.json` run the harvest→embed pipeline as a scheduled Databricks Job on an hourly cron — deployed and confirmed running clean against real serverless infra. `notebooks/hnsw_benchmark.py` times cosine-similarity queries with and without the HNSW index; it's built and unit-tested but hasn't been run against live data yet (see limitations above).
+
+Upsert/dedup on `id` and `source_type` filtering were both cheap enough to fold into the base implementation rather than build separately — see the schema and `/weather/search` sections above.
+
+The app also has a small search/sync UI (`templates/index.html`) — not a required deliverable, just a convenience for demoing without curl — and can be deployed as a persistent Databricks App, not just run locally.

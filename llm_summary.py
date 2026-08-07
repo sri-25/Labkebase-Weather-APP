@@ -1,22 +1,15 @@
 """
 LLM-generated summary over retrieved search results, via Databricks
-Foundation Model APIs (pay-per-token serving endpoints).
+Foundation Model APIs. Reuses the already-authenticated WorkspaceClient
+(same auth path as lakebase.py) instead of a separate API key.
 
-Why Databricks Foundation Model APIs over OpenAI/Anthropic directly: it
-reuses the already-authenticated WorkspaceClient (same auth path as
-lakebase.py) - no new API key/secret to manage.
+WorkspaceClient() is instantiated inside summarize(), not at import time
+(unlike lakebase.py) - so importing this module doesn't need live
+credentials, only calling summarize() does.
 
-Unlike lakebase.py, WorkspaceClient() is instantiated INSIDE summarize()
-(not at module import time) - so importing this module doesn't require
-live Databricks credentials, only actually calling summarize() does.
-
-Why this exists: raw top-K similarity search can't tell the difference
-between "a real match" and "the least-bad option available" - see
-DECISIONS.md Phase 4 (the Seattle/Chicago mislabeling saga) and the
-low_confidence flag already on /weather/search. An LLM reading the
-actual retrieved text can say "none of this is really about what you
-asked" in a way a similarity score alone can't - this was the user's
-explicit ask after watching search confidently return the wrong city.
+Raw top-K similarity search can't distinguish "a real match" from "the
+least-bad option available" - an LLM reading the actual text can say so
+plainly, which a similarity score alone can't.
 """
 from __future__ import annotations
 

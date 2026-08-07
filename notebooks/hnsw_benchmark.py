@@ -1,26 +1,18 @@
 """
-Benchmark: query latency WITH vs WITHOUT the HNSW index on
-weather_embeddings.embedding.
+Benchmark: query latency with vs. without the HNSW index on
+weather_embeddings.embedding. Drops the index, times N cosine-similarity
+queries (sequential scan), recreates it, times N more (index scan), and
+reports the difference.
 
-Demonstrates the actual effect of the `USING hnsw (embedding
-vector_cosine_ops)` index built in app.py's ensure_weather_embeddings_table()
-- drops it, times N sample cosine-similarity queries (sequential scan),
-recreates it, times N more (index scan), and reports the difference.
+Note on interpreting results: HNSW's advantage grows with row count and
+dimensionality. On a small corpus, a sequential scan can be just as fast
+or faster once index overhead is counted - a known property of ANN
+indexes, not a bug here. Report what the numbers say rather than
+assuming the index has to win.
 
-HONESTY NOTE (read before trusting the numbers): HNSW's advantage grows
-with row count and dimensionality. On a small corpus (the kind this
-homework's V1 produces - tens to low hundreds of documents), a sequential
-scan can be just as fast, or even faster once you account for the index's
-own overhead - that's a real, well-known characteristic of ANN indexes,
-not a bug in this script. Don't be surprised or worried if WITH/WITHOUT
-look similar at small scale; report what the numbers actually say rather
-than assuming the index "must" win.
-
-WARNING: this drops and recreates a real index against your Lakebase
-instance. Safe (no data loss - only the index, not the table, is
-dropped), but don't run it against a shared/production instance while
-others are querying, since query latency will be worse than normal for
-the sequential-scan phase.
+Drops and recreates a real index against Lakebase - no data loss (only
+the index, not the table), but don't run against a shared instance while
+others are querying it.
 
 Usage:
     python notebooks/hnsw_benchmark.py

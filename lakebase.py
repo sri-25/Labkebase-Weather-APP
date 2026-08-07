@@ -1,19 +1,14 @@
 """
 Lakebase (Databricks-managed Postgres) connection helper.
 
-Connects using a single LAKEBASE_URL (a standard Postgres connection URL,
-e.g. postgresql://role:password@host:5432/databricks_postgres?sslmode=require)
-pointing at a native Postgres role with a static, non-expiring password.
-This keeps setup to a single secret instead of several separate env vars.
+Connects using a single LAKEBASE_URL (a standard Postgres connection URL)
+pointing at a native Postgres role with a static password, stored as a
+Databricks secret rather than a local .env - keeps setup to one secret
+instead of several env vars, and means no credential ever touches disk.
 
-Originally matched the instructor's canonical reference app's pattern
-exactly (psycopg2 + RealDictCursor + SQLAlchemy) - see DECISIONS.md
-"Phase 1.5". Switched to psycopg3 later (see DECISIONS.md "Phase 10 -
-scheduled job") after psycopg2-binary crashed with SIGABRT on import
-under Databricks serverless - its bundled OpenSSL collides with grpc's
-in that runtime. psycopg3's binary wheel doesn't bundle OpenSSL the same
-way, and the %s-style parameter placeholders used everywhere in this
-project stayed unchanged, so this was a driver swap, not a query rewrite.
+Uses psycopg3, not psycopg2 - psycopg2-binary's bundled OpenSSL collides
+with grpc's under Databricks serverless (SIGABRT on import). See
+DECISIONS.md for the full crash writeup if this ever needs revisiting.
 """
 
 from __future__ import annotations

@@ -1,25 +1,15 @@
 """
 Ingest weather_documents -> weather_embeddings (Lakebase).
 
-Plain psycopg3-based Python script (NOT Spark, NOT spark.write.jdbc - the
-homework spec calls this out explicitly since Spark JDBC can't reliably
-write pgvector VECTOR columns or run ON CONFLICT upserts against this
-Lakebase instance). Safe to run from a terminal, a cron job, or a
-Databricks Job "python script" task - no dbutils/notebook-only APIs used.
+Plain psycopg3 script, not Spark - Spark JDBC can't reliably write
+pgvector VECTOR columns or run ON CONFLICT upserts here. Runs fine from a
+terminal, cron, or a Databricks Job "python script" task.
 
-What it does, in order:
-  1. Find documents in weather_documents that don't have embeddings yet
-     (a LEFT JOIN against weather_embeddings, filtered to NULL matches) -
-     this is our hand-rolled equivalent of a Delta "Change Data Feed":
-     Postgres has no built-in change-tracking feature, so we detect "what's
-     new" ourselves with a comparison query instead of a platform-native
-     changelog.
-  2. Chunk + embed + upsert them via embed_pipeline.py (shared with app.py,
-     which calls the same functions immediately after every sync so
-     newly-added cities are searchable right away - this script is for
-     catching anything that slipped through, e.g. rows inserted directly
-     or a sync that happened while the app process wasn't running, plus
-     scheduled/cron/Databricks-Job re-runs as a safety net).
+Finds documents with no embeddings yet (LEFT JOIN against
+weather_embeddings, no built-in change-tracking in Postgres so this is
+the stand-in), then chunks/embeds/upserts them via embed_pipeline.py -
+the same module app.py uses inline after every sync. This script is the
+safety net for anything that slips through that path.
 
 Usage:
     python notebooks/ingest_weather_embeddings.py
@@ -50,17 +40,10 @@ from embedding import EMBEDDING_DIM, EMBEDDING_MODEL_NAME
 
 
 def find_unembedded_documents(limit: int | None = None) -> list[dict]:
-    """
-    Documents in weather_documents with no matching rows in
-    weather_embeddings yet. This is the "what changed" step - our
-    hand-rolled stand-in for Delta's Change Data Feed, since Postgres has
-    no built-in equivalent.
-
-    Selects location + headline (not just id/narrative_text) since
-    embed_pipeline.build_chunk_rows() bakes location into the text it
-    embeds (see DECISIONS.md Phase 4) - without these two columns here,
-    documents picked up by this path would silently skip that step.
-    """
+    """Documents with no matching weather_embeddings rows yet. Selects
+    location + headline too, not just id/narrative_text - build_chunk_rows()
+    bakes those into the embedded text, so skipping them here would mean
+    picked-up documents lose that context."""
     sql = """
         SELECT d.id, d.narrative_text, d.location, d.headline
         FROM weather_documents d
@@ -77,13 +60,9 @@ def find_unembedded_documents(limit: int | None = None) -> list[dict]:
 
 
 def find_all_documents(limit: int | None = None) -> list[dict]:
-    """
-    EVERY document with narrative text, regardless of whether it already
-    has embeddings. Used by --all to force a full re-embed - e.g. after
-    changing what gets embedded (like baking location into the embedded
-    text, Phase 4) or switching embedding models, where existing rows are
-    stale/wrong rather than simply missing.
-    """
+    """Every document with narrative text, embedded or not. Used by --all
+    to force a full re-embed - e.g. after changing what gets embedded, or
+    switching models, where existing rows are stale rather than missing."""
     sql = """
         SELECT d.id, d.narrative_text, d.location, d.headline
         FROM weather_documents d
@@ -125,9 +104,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--all", action="store_true", dest="reembed_all",
-        help="Re-embed every document, not just unembedded ones - use after "
-             "a change to what gets embedded (e.g. Phase 4's location-prefix "
-             "fix) so existing rows pick up the new behavior too.",
+        help="Re-embed every document, not just unembedded ones - use "
+             "after a change to what gets embedded so existing rows pick "
+             "up the new behavior too.",
     )
     args = parser.parse_args()
     run(limit=args.limit, reembed_all=args.reembed_all)

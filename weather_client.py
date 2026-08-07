@@ -1,31 +1,15 @@
 """
 Client for the National Weather Service (NWS) API (api.weather.gov).
+No API key required - just a descriptive User-Agent header identifying
+the app/contact (see https://www.weather.gov/documentation/services-web-api).
 
-No API key required - NWS just asks for a descriptive User-Agent header
-identifying the app/contact so they can reach out if a client misbehaves
-(see https://www.weather.gov/documentation/services-web-api). This mirrors
-massive_client.py's shape (a thin requests.Session wrapper) but has no
-secret-scope auth step at all, since there's nothing to authenticate.
-
-Two-layer location resolution, since NWS takes lat/lon but the sync
-endpoint accepts human-friendly "City, ST" strings:
-  1. A small static dict of known cities (fast, deterministic, no network -
-     keeps unit tests hermetic).
-  2. Fallback to OpenStreetMap's Nominatim geocoder - free, no key, no
-     signup - for any city/state not in the dict.
-  3. Raw "lat,lon" strings bypass geocoding entirely.
-This means adding a new city later is just passing its name in the
-/weather/sync request body - no code change required.
-
-Note on the fallback choice: the US Census Bureau's geocoder was tried
-first, since it's a well-known free/no-key option - but it turned out to
-only match specific STREET ADDRESSES against TIGER address ranges
-("1600 Pennsylvania Ave, Washington, DC" works; a bare "Denver, CO" does
-not, no matter how well-known the city is). Nominatim is built for
-place/city-level queries directly, which is what this actually needs.
-Subject to Nominatim's usage policy (max ~1 request/sec, requires an
-identifying User-Agent - reuses DEFAULT_USER_AGENT below) - fine for this
-project's interactive, one-city-at-a-time watchlist-add use case.
+Location resolution, since NWS takes lat/lon but callers pass "City, ST":
+  1. Raw "lat,lon" strings bypass geocoding entirely.
+  2. A small static dict of known cities (no network, keeps tests hermetic).
+  3. Fallback to OpenStreetMap's Nominatim geocoder for anything else -
+     used over the Census geocoder (tried first) because Census only
+     matches street addresses against TIGER ranges, not bare "City, ST"
+     queries. Subject to Nominatim's ~1 req/sec usage policy.
 """
 
 from __future__ import annotations
@@ -48,10 +32,9 @@ DEFAULT_USER_AGENT = os.environ.get(
 
 _DEFAULT_TIMEOUT = 30
 
-# Fast-path static lookup for the V1 seed cities - avoids a network round
-# trip to the Census geocoder for the locations we test against most.
-# Values are (lat, lon). Add more here as convenient, but nothing requires
-# it - the Census geocoder fallback below handles any city not listed.
+# Static lookup for the original seed cities - avoids a geocoder round
+# trip for the locations tested against most. Anything not listed here
+# falls through to Nominatim below.
 _CITY_COORDS: dict[str, tuple[float, float]] = {
     "chicago, il": (41.8781, -87.6298),
     "austin, tx": (30.2672, -97.7431),
@@ -244,12 +227,11 @@ class WeatherClient:
         document schema.
 
         id: forecast periods have no natural stable ID from NWS, so we
-        synthesize one from grid cell + period number + startTime. This is
-        stable across re-syncs within the same forecast cycle (so ON
-        CONFLICT upserts correctly instead of duplicating), but changes
-        once NWS regenerates the forecast package (~twice daily) - old
-        period rows are left in place rather than deleted. See
-        README_WEATHER.md limitations for the cleanup-job follow-up.
+        synthesize one from grid cell + period number + startTime. Stable
+        across re-syncs within the same forecast cycle (so ON CONFLICT
+        upserts correctly), but changes once NWS regenerates the package
+        (~twice daily) - old rows are cleaned up separately, see
+        app.py's cleanup_expired_forecasts().
         """
         period_number = period.get("number")
         start_time = period.get("startTime")

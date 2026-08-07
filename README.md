@@ -35,15 +35,15 @@ curl -X POST http://localhost:8000/weather/search \
 - `app.py` — `POST /weather/sync`, `POST /weather/search`
 - `lakebase.py` + `sql/` — Postgres/pgvector schema (`weather_documents`, `weather_embeddings`)
 - `notebooks/ingest_weather_embeddings.py` — psycopg3 chunk → embed → upsert pipeline
-- `tests/` — 100 passing unit tests (fully mocked, no live infra needed)
+- `tests/` — 107 passing unit tests (fully mocked, no live infra needed)
 
 **Stretch goals:**
 - `llm_summary.py` — LLM-generated natural-language summary over search results (`"summarize": true`), via Databricks Foundation Model APIs — live-verified
-- `notebooks/sync_weather_job.py` + `resources/sync_weather_job.json` — scheduled re-sync as a Databricks Job
-- `notebooks/hnsw_benchmark.py` — HNSW vs. sequential-scan query latency benchmark
+- `notebooks/sync_weather_job.py` + `resources/sync_weather_job.json` — scheduled re-sync as a Databricks Job, live-verified running hourly on serverless compute
+- `notebooks/hnsw_benchmark.py` — HNSW vs. sequential-scan query latency benchmark (built, not yet run against live data)
 - Upsert/dedup on `id`, `source_type` filtering (alert vs. forecast) — both folded into the base `/weather/search` contract
 
-`templates/index.html` is an optional, minimal search UI — not a required deliverable, just a convenience for eyeballing results without curl.
+`templates/index.html` is a search/sync UI with live stats and trend charts — not a required deliverable, just a convenience for demoing without curl. Can also be deployed as a persistent Databricks App (`app.yaml`).
 
 ## Project layout
 

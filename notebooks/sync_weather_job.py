@@ -1,30 +1,21 @@
 """
 Scheduled re-sync entrypoint - re-syncs + re-embeds a configured list of
-cities on a timer, without needing anyone to run /weather/sync by hand.
-Meant to run as a Databricks Job (see resources/sync_weather_job.json) so
-the corpus stays fresh automatically.
+cities on a timer, so the corpus stays fresh without anyone running
+/weather/sync by hand. Runs as a Databricks Job, see
+resources/sync_weather_job.json.
 
-Which cities: no watchlist table anymore (see DECISIONS.md Phase 9 - the
-per-city "Cities Tracked" UI/table was removed entirely). This job syncs
-a fixed, configured location list instead - reuses app.py's
-DEFAULT_LOCATIONS by default (same "WEATHER_DEFAULT_LOCATIONS" env var
-used by POST /weather/sync when no locations are given, so the app and
-this job agree on what "the corpus" means unless you override one of
-them), or pass --locations to sync something else for this run only.
+Syncs app.py's DEFAULT_LOCATIONS by default (same
+WEATHER_DEFAULT_LOCATIONS env var POST /weather/sync falls back to), or
+pass --locations to override for a single run.
 
-Deliberately thin: it reuses app.py's already-tested per-city sync logic
-(_sync_one_location - harvest -> upsert -> embed -> expire-cleanup, see
-DECISIONS.md Phases 3-5) rather than duplicating that logic here. Yes,
-this means importing a "private" (underscore-prefixed) function from
-app.py, which is a known wart - the cleaner fix is extracting a shared
-sync_pipeline module both app.py and this script import from, still
-deferred to a future codebase cleanup pass.
+Reuses app.py's _sync_one_location (harvest -> upsert -> embed -> expire
+cleanup) rather than duplicating it - importing a private function from
+app.py is a known wart; extracting a shared sync_pipeline module would be
+the cleaner fix, not done here.
 
-Plain psycopg3 + requests script (NOT Spark) - matches the homework
-spec's explicit note that Spark JDBC can't reliably write pgvector VECTOR
-columns or run ON CONFLICT upserts against Lakebase. Runs fine as a
-Databricks Job "Python script" task, a local terminal, or cron - no
-dbutils/notebook-only APIs used.
+Plain psycopg3 + requests, not Spark (Spark JDBC can't reliably write
+pgvector columns or run ON CONFLICT upserts here). Runs as a Databricks
+Job task, a local terminal, or cron.
 
 Usage:
     python notebooks/sync_weather_job.py

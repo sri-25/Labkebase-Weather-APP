@@ -1,16 +1,12 @@
 """
 Weather Intelligence Flask API.
-- Serves POST /weather/sync - harvest NWS alerts + forecasts into Lakebase
-- Serves POST /weather/search - semantic search over synced weather docs,
-  optionally with an LLM-generated summary (see llm_summary.py)
-- Serves GET /weather/feed/recent - small "what's new" news feed
-- Reads/writes to Lakebase (Databricks-managed Postgres) via lakebase.py
-- Pulls unstructured weather text from the NWS API via weather_client.py
 
-Run locally (needs two terminal windows - app.py stays running in one):
-    python app.py
+POST /weather/sync           harvest NWS alerts + forecasts into Lakebase
+POST /weather/search          semantic search over synced docs, optional LLM summary
+GET  /weather/feed/recent      recently synced alerts/forecasts
+GET  /weather/stats(/trends)   corpus counts + chart data for the UI
 
-Then, in a SECOND terminal:
+Run: python app.py, then in another terminal:
     curl -X POST http://localhost:8000/weather/sync \
       -H "Content-Type: application/json" \
       -d '{"locations": ["Chicago, IL"], "limit": 10}'
@@ -34,9 +30,8 @@ logger = logging.getLogger("weather-app")
 
 app = Flask(__name__)
 
-# Load the embedding model once, here at module level, NOT inside the
-# /weather/search route - loading it per-request would make every search
-# pay the model-load cost (slow) instead of just the one-time startup cost.
+# Load once at import time, not per-request, so search doesn't pay the
+# model-load cost on every call.
 logger.info("Loading embedding model %s ...", EMBEDDING_MODEL_NAME)
 get_model()
 logger.info("Embedding model loaded.")
@@ -48,14 +43,11 @@ MIN_TOP_K = 1
 MAX_TOP_K = 20
 DEFAULT_TOP_K = 5
 
-# Below this cosine similarity, a result is "the least-bad option we have"
-# rather than a genuine match - pgvector's <=> always returns the closest
-# K rows even if none are actually relevant, so without a floor, search
-# for a completely untracked city/topic quietly returns misleading
-# results instead of admitting "nothing relevant here." 0.5 is an
-# empirically-chosen heuristic (see DECISIONS.md) based on real matches
-# scoring ~0.63-0.67 vs. a real known-irrelevant query scoring ~0.41-0.45
-# - not a universal constant, tune via env var if it misfires in practice.
+# pgvector's <=> always returns the closest K rows, even if none are
+# actually relevant - below this score, flag it as low_confidence instead
+# of presenting it as a real match. 0.5 picked empirically (real matches
+# ran ~0.63-0.67, a known-irrelevant query ran ~0.41-0.45); override via
+# env var if it needs retuning.
 MIN_SIMILARITY = float(os.environ.get("WEATHER_MIN_SIMILARITY", 0.5))
 
 MIN_RECENT_LIMIT = 1
@@ -129,10 +121,7 @@ def ensure_weather_embeddings_table() -> None:
 
 @app.route("/")
 def index():
-    """Search + news feed UI. Populating the corpus (POST /weather/sync)
-    is an API/script/scheduled-job operation, not a UI action - see
-    DECISIONS.md Phase 9 for why the watchlist add/remove UI was removed
-    rather than kept as the only way to get data in."""
+    """Search/sync UI. Serves templates/index.html."""
     return render_template("index.html")
 
 
@@ -186,14 +175,11 @@ def sync_weather():
 
 
 def _sync_one_location(client: WeatherClient, location: str, limit: int) -> tuple[int, str | None]:
-    """Sync one location end to end: harvest -> upsert -> embed. Returns
-    (documents_synced, error_message_or_None). Shared by POST /weather/sync
-    and notebooks/sync_weather_job.py (the scheduled re-sync).
-
-    Embeds inline (not just upserts raw text) so whatever was just synced
-    is searchable immediately - without this, a freshly-added city would
-    say "synced: N" while /weather/search silently found nothing for it
-    until someone remembered to run the batch ingestion script by hand."""
+    """Sync one location: harvest -> upsert -> embed. Returns
+    (documents_synced, error_message_or_None). Shared with
+    notebooks/sync_weather_job.py so the scheduled job reuses the same
+    logic. Embeds inline so newly-synced docs are searchable right away
+    rather than only after the next batch ingestion run."""
     try:
         documents = client.sync_location(location, limit=limit)
     except GeocodeError as e:
@@ -211,11 +197,9 @@ def _sync_one_location(client: WeatherClient, location: str, limit: int) -> tupl
 
 
 def _embed_now_best_effort(documents: list[dict], context: str) -> None:
-    """Embed just-synced documents immediately. Failures here are logged,
-    not raised - the raw documents are already safely stored either way,
-    and the batch ingestion script will pick up anything missed on its
-    next scheduled run, so a slow/flaky embedding call shouldn't fail the
-    whole sync request."""
+    """Embed just-synced documents immediately. Best-effort - a failure
+    here is logged, not raised; the batch ingestion script picks up
+    anything missed on its next run."""
     if not documents:
         return
     try:
@@ -249,16 +233,9 @@ def _cleanup_expired_forecasts_best_effort(context: str) -> None:
 
 @app.route("/weather/stats", methods=["GET"])
 def stats():
-    """
-    Small read-only summary of what's actually in the corpus right now -
-    document count, embedding count, distinct location count, plus which
-    embedding model/dimension produced them. Powers the UI's stat strip
-    (see templates/index.html) so the page reflects real data instead of
-    a static claim about what the app "can" do.
-
-    Cheap on purpose: three COUNT queries, no joins, no vector math -
-    fine to call on every page load, unlike /weather/search.
-    """
+    """Corpus counts (documents, embeddings, distinct locations) plus the
+    embedding model/dimension - powers the UI's stat strip. Just three
+    COUNT queries, cheap enough to call on every page load."""
     ensure_weather_documents_table()
     ensure_weather_embeddings_table()
 
@@ -279,20 +256,14 @@ def stats():
 
 @app.route("/weather/stats/trends", methods=["GET"])
 def stats_trends():
-    """
-    Aggregate breakdowns behind the UI's charts. Kept separate from
-    GET /weather/stats (which the UI polls every 60s) since these three
-    GROUP BY queries are heavier and only need to run once per page load.
+    """Chart data for the UI's Trends panel: document counts by location,
+    by source_type, and by day (last 14 days). Kept separate from
+    GET /weather/stats since these GROUP BYs are heavier and only need to
+    run once per page load, not on every poll.
 
-    Three real aggregations over weather_documents, no synthetic/filler
-    data:
-      - locations: document count per location (top 10)
-      - source_types: document count per source_type (alert vs forecast)
-      - daily: document count per day, split by source_type, last 14 days
-        (corpus growth/sync activity over time - NOT a weather-parameter
-        trend like temperature, which would require parsing NWS's raw
-        payload JSON; not attempted here since it's untested against live
-        data and a separate, riskier change from this one)
+    Tracks corpus/sync activity over time, not weather parameters like
+    temperature - that would need parsing NWS's raw payload JSON, which
+    nothing else in this codebase does yet.
     """
     ensure_weather_documents_table()
 
@@ -327,23 +298,13 @@ def stats_trends():
 
 @app.route("/weather/feed/recent", methods=["GET"])
 def recent_feed():
-    """
-    A small, glanceable "news feed" of whatever's actually in the corpus -
-    the most recently synced documents, ALERTS AND FORECASTS BOTH, newest
-    first. Polled by the UI every ~30s.
+    """Most recently synced documents (alerts + forecasts), newest first.
+    Capped small (top 10, not paginated) - a glanceable feed, not a
+    browser; use /weather/search for that. Polled by the UI every ~30s.
 
-    Deliberately NOT scoped by location/watchlist (there is no watchlist
-    concept anymore, see DECISIONS.md Phase 9) and deliberately capped
-    small (top 10, not paginated) - this is meant to answer "what's new,"
-    not double as a full document browser. Use /weather/search for that.
-
-    Query params: ?limit=10 (default 10, clamped [1, 10])
-
-    Response includes last_synced_at - the most recent synced_at across
-    the whole corpus (i.e. when data was actually last pulled, whether by
-    a manual /weather/sync call or the scheduled job) - NOT the same as
-    "when the UI last polled this endpoint," which is what a naive
-    client-side timestamp would otherwise show.
+    Query params: ?limit=10 (default 10, clamped [1, 10]).
+    last_synced_at is the newest synced_at in the corpus, not "when the
+    UI last polled."
     """
     ensure_weather_documents_table()
 
@@ -369,23 +330,13 @@ def recent_feed():
 
 
 def cleanup_expired_alerts() -> int:
-    """
-    Delete alert documents whose NWS-reported expiration
-    (effective_at = expires/ends, see WeatherClient.normalize_alert) has
-    already passed. weather_embeddings rows go with them automatically
-    via the existing ON DELETE CASCADE foreign key, so search stops
-    surfacing expired alerts too, not just the Recent Alerts feed.
-
-    Only applies to source_type='alert' - forecast periods' effective_at
-    is their *start* time, not an expiration, so this predicate would be
-    wrong for them (it's alert-specific by design, not a blanket "delete
-    old rows" job).
-
-    Run opportunistically after every sync (not on a schedule - there's
-    no scheduler/cron infra yet) rather than at read-time, since this is
-    a write, and the news feed is polled every ~30s - running a DELETE on
-    every read would be wasteful.
-    """
+    """Delete alerts past their NWS-reported expiration (effective_at =
+    expires/ends, see WeatherClient.normalize_alert). Embeddings cascade
+    via the FK, so expired alerts drop out of search too, not just the
+    feed. Alert-only: forecasts' effective_at is a start time, not an
+    expiration - see cleanup_expired_forecasts() for those. Runs after
+    every sync rather than on a schedule (no cron infra) or at read-time
+    (feed is polled every ~30s, too often for a DELETE)."""
     return lakebase.run_write(
         f"""
         DELETE FROM {WEATHER_DOCUMENTS_TABLE}
@@ -397,38 +348,12 @@ def cleanup_expired_alerts() -> int:
 
 
 def cleanup_expired_forecasts() -> int:
-    """
-    Delete forecast-period documents once that specific period has ended,
-    using NWS's own `endTime` for the period (read out of `payload`, the
-    raw NWS forecast-period JSON - see WeatherClient.normalize_forecast_period)
-    rather than a blanket "older than N hours" cutoff.
-
-    Why endTime and not a fixed cutoff: forecast periods aren't a fixed
-    length - an overnight "Tonight" period might span 6 hours, a daytime
-    "Monday" period spans 12 - so a single fixed cutoff would either
-    delete short periods while they're still current, or leave long-past
-    periods around for a day+ after they stopped being relevant. endTime
-    is a stable, NWS-documented field present on every forecast period
-    (the same trust level as startTime, already used as effective_at
-    elsewhere in this file) - not new/unproven data, just a second field
-    read out of the same payload blob. `payload ? 'endTime'` (JSONB key
-    existence) guards against the rare row missing it rather than letting
-    the cast fail the whole cleanup.
-
-    weather_embeddings rows go with them automatically via the existing
-    ON DELETE CASCADE foreign key, same as cleanup_expired_alerts() - so
-    a stale forecast can't be searched, summarized, or shown in the feed
-    once its period has actually passed. This closes the gap where an
-    LLM summary could otherwise be handed a superseded forecast as if it
-    were current.
-
-    Run opportunistically after every sync (see
-    _cleanup_expired_forecasts_best_effort), same shape and same
-    reasoning as cleanup_expired_alerts() - there's no separate
-    scheduler/cron infra to run this on its own timer, and running a
-    DELETE on every read (the feed is polled every ~30s) would be
-    wasteful.
-    """
+    """Delete forecast periods once they've actually ended, using each
+    period's own NWS-reported `endTime` (from `payload`) rather than a
+    fixed hours cutoff - periods range from ~6 to ~12 hours, so one fixed
+    number would be wrong for some of them either way. `payload ?
+    'endTime'` guards rows missing the key. Same cascade-delete and
+    best-effort-after-sync shape as cleanup_expired_alerts()."""
     return lakebase.run_write(
         f"""
         DELETE FROM {WEATHER_DOCUMENTS_TABLE}
@@ -446,17 +371,13 @@ def search_weather():
 
     Body: {"query": "flash flood risk this weekend", "top_k": 5,
            "source_type": "alert", "summarize": true}
-    "source_type" is optional (filters to "alert" or "forecast" only).
-    "summarize" is optional (default false) - when true, an LLM (Databricks
-    Foundation Model API, see llm_summary.py) reads the retrieved chunks
-    and answers the question in plain language, instead of leaving the
-    user to read through raw similarity-ranked cards themselves. Off by
-    default so the base search contract (and its tests) stay unchanged
-    and every caller doesn't pay LLM latency/cost unless they ask for it.
+    source_type is optional (alert/forecast only). summarize is optional,
+    default false - when true, an LLM reads the retrieved chunks and
+    answers in plain language (see llm_summary.py); off by default so
+    callers don't pay LLM latency/cost unless they ask for it.
 
-    Returns the top_k most semantically similar chunks (pgvector cosine
-    distance via the <=> operator), each with its parent document's
-    location/headline attached.
+    Returns the top_k most similar chunks (pgvector cosine distance),
+    each with its parent document's location/headline attached.
     """
     ensure_weather_documents_table()
     ensure_weather_embeddings_table()
@@ -508,9 +429,6 @@ def search_weather():
         for r in rows
     ]
 
-    # "Low confidence" = nothing relevant enough exists in the tracked
-    # corpus, not "the database is broken" - the UI treats these two
-    # cases very differently.
     low_confidence = (not results) or (results[0]["similarity"] < MIN_SIMILARITY)
 
     response_body = {
@@ -524,10 +442,8 @@ def search_weather():
         try:
             response_body["summary"] = llm_summarize(query, results, low_confidence)
         except Exception:
-            # Best-effort, same shape as the embed/cleanup best-effort
-            # steps elsewhere - a flaky/misconfigured LLM endpoint
-            # shouldn't take down search results that already work fine
-            # without it.
+            # Best-effort - a flaky LLM endpoint shouldn't take down
+            # search results that already work fine without it.
             logger.exception("LLM summary failed (search results still returned)")
             response_body["summary_error"] = "Summary unavailable right now."
 
@@ -577,17 +493,13 @@ def _upsert_documents_batch(documents: list[dict]) -> int:
 
 
 if __name__ == "__main__":
-    # FLASK_RUN_HOST / FLASK_RUN_PORT: same env vars whether this runs
-    # locally (defaults below) or as a Databricks App - the Apps runtime
-    # auto-detects Flask (via requirements.txt) and injects these two
-    # itself, so no app.yaml env config is needed just to bind correctly.
+    # Databricks Apps auto-injects these same two vars for detected Flask
+    # apps, so this works unchanged locally or deployed.
     host = os.getenv("FLASK_RUN_HOST", "0.0.0.0")
     port = int(os.getenv("FLASK_RUN_PORT", 8000))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    # threaded=True: the UI polls /weather/stats and /weather/feed/recent
-    # on independent timers while a user might also be mid-search or
-    # mid-sync - without this, Flask's dev server handles one request at
-    # a time and later polls queue up behind whichever request is slowest
-    # (a sync call, which does real NWS + Lakebase + embedding work).
     print(f"Flask app running on http://{host}:{port}")
+    # threaded=True: UI polls stats/feed on their own timers alongside
+    # whatever the user's doing; single-threaded dev server would queue
+    # those behind a slow sync request.
     app.run(debug=debug, host=host, port=port, threaded=True)

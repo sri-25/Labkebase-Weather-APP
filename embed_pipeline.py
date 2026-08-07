@@ -1,19 +1,11 @@
 """
 Shared chunk -> embed -> upsert pipeline.
 
-Used by BOTH:
-  - notebooks/ingest_weather_embeddings.py - the standalone/scheduled batch
-    job that scans weather_documents for anything without embeddings yet.
-  - app.py - embeds documents immediately after any sync (batch or
-    watchlist add), so a user can search what they just synced right
-    away, without separately running the batch script in another
-    terminal. Without this, "add to watchlist" would say "synced: 19"
-    while search silently returned nothing for that city until someone
-    remembered to run the ingestion script by hand - a real gap for
-    anything calling itself a finished app.
-
-Extracted into its own module specifically so both call sites share one
-implementation instead of drifting apart over time.
+Used by both notebooks/ingest_weather_embeddings.py (the batch job that
+scans weather_documents for anything without embeddings yet) and app.py
+(embeds inline right after a sync, so results are searchable immediately
+instead of waiting on the next batch run). One implementation, two
+callers.
 """
 from __future__ import annotations
 
@@ -25,26 +17,19 @@ from embedding import EMBEDDING_MODEL_NAME, embed_texts
 def build_chunk_rows(documents: list[dict]) -> list[tuple]:
     """
     Chunk + embed a list of documents (each needs at least "id" and
-    "narrative_text" keys - matches both a weather_documents DB row and
-    the raw dicts weather_client.py produces before they're even written
-    to the DB). Returns rows ready for execute_values:
+    "narrative_text" - matches both a DB row and the raw dicts
+    weather_client.py produces before they're written). Returns rows:
     (id, document_id, chunk_index, chunk_text, embedding, model_name).
 
-    Embeds in one batch across ALL chunks from ALL documents (not one
-    document at a time) - loading the model happens once regardless, but
-    a single larger encode() call is meaningfully faster than many tiny
-    ones.
+    Embeds all chunks from all documents in one batch call rather than
+    per-document - one larger encode() is meaningfully faster than many
+    small ones.
 
-    Location is prefixed onto the text that gets EMBEDDED (not what's
-    stored/displayed as chunk_text). Without this, a document's city name
-    lives only in a separate SQL column and never enters the vector at
-    all - a query like "how's the weather in seattle" has nothing to
-    match against "seattle" specifically, so ranking is driven purely by
-    generic topical similarity and a plain, generic-sounding forecast in
-    an untracked city can out-rank the actually-relevant city's alert
-    text. Baking "{location} — {headline}: " into the embedded string (but
-    NOT into the stored chunk_text, which stays clean for display) fixes
-    this without needing a schema change. See DECISIONS.md Phase 4.
+    Prefixes "{location} — {headline}: " onto the text that gets embedded
+    (not the stored chunk_text, which stays clean for display) - without
+    it, a city's name lives only in a SQL column and never enters the
+    vector, so a query like "weather in seattle" has nothing to match
+    "seattle" against and ranks purely on generic topical similarity.
     """
     # (document_id, chunk_index, chunk_text_for_display, text_to_embed)
     all_chunks: list[tuple[str, int, str, str]] = []
@@ -65,21 +50,17 @@ def build_chunk_rows(documents: list[dict]) -> list[tuple]:
     rows = []
     for (document_id, chunk_index, chunk_piece, _embed_text), vector in zip(all_chunks, vectors):
         row_id = f"{document_id}_{chunk_index}"
-        # pgvector accepts a bracketed string like "[0.1,0.2,...]" cast via
-        # ::vector - psycopg2 sends it as a plain string parameter, and the
-        # explicit cast in the SQL (see upsert_chunk_rows) tells Postgres
-        # how to interpret it, same idiom as the ticker-news pipeline.
+        # pgvector accepts a bracketed string like "[0.1,0.2,...]" cast to
+        # ::vector in the SQL (see upsert_chunk_rows).
         vector_literal = "[" + ",".join(str(x) for x in vector) + "]"
         rows.append((row_id, document_id, chunk_index, chunk_piece, vector_literal, EMBEDDING_MODEL_NAME))
     return rows
 
 
 def upsert_chunk_rows(rows: list[tuple]) -> int:
-    """Batched upsert - one INSERT statement with N value-groups, one round
-    trip for the whole batch instead of one INSERT per row. Built manually
-    (rather than psycopg2.extras.execute_values, which psycopg3 has no
-    direct equivalent for) by repeating the value-group placeholder and
-    flattening the row tuples into one parameter list."""
+    """Batched upsert - one INSERT with N value-groups instead of one
+    round trip per row. Built by hand (psycopg3 has no execute_values()
+    equivalent) via a repeated placeholder + flattened param list."""
     if not rows:
         return 0
 
