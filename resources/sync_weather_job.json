@@ -7,19 +7,22 @@
         "python_file": "/Workspace/Users/srijan2554@gmail.com/Labkebase-Weather-APP/notebooks/sync_weather_job.py",
         "parameters": ["--limit", "50"]
       },
-      "new_cluster": {
-        "spark_version": "15.4.x-scala2.12",
-        "node_type_id": "m5.large",
-        "num_workers": 0,
-        "data_security_mode": "SINGLE_USER"
-      },
-      "libraries": [
-        { "pypi": { "package": "psycopg2-binary" } },
-        { "pypi": { "package": "sqlalchemy" } },
-        { "pypi": { "package": "requests" } },
-        { "pypi": { "package": "sentence-transformers" } },
-        { "pypi": { "package": "databricks-sdk" } }
-      ]
+      "environment_key": "sync_weather_env"
+    }
+  ],
+  "environments": [
+    {
+      "environment_key": "sync_weather_env",
+      "spec": {
+        "client": "1",
+        "dependencies": [
+          "psycopg2-binary",
+          "sqlalchemy",
+          "requests",
+          "sentence-transformers",
+          "databricks-sdk"
+        ]
+      }
     }
   ],
   "schedule": {

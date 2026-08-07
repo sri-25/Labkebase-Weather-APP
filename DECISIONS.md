@@ -1129,10 +1129,27 @@ older `/Workspace/Repos/<username>/<repo>` convention this file's
 placeholder assumed. Updated `resources/sync_weather_job.json`'s
 `python_file` path to match the real location instead of guessing.
 
+### Bug found live: `databricks jobs create` rejected the classic-cluster job spec
+`Error: Only serverless compute is supported in the workspace.` - not a
+typo or bad value, a genuine workspace-level constraint: this workspace
+doesn't offer classic all-purpose/job clusters at all, only serverless.
+The `node_type_id` decision above (m5.large) was correct reasoning for a
+classic cluster but moot here - there's no cluster to size.
+
+**Fix:** rewrote `resources/sync_weather_job.json` for serverless job
+compute - removed `new_cluster` and `libraries` (classic-cluster-only
+concepts) entirely. Serverless tasks instead reference an
+`environment_key` pointing at a top-level `environments` entry (`spec.client:
+"1"`, `spec.dependencies: [...]` - same five pip packages as before, just
+declared differently). No cluster sizing decision needed at all for
+serverless - one less thing to get wrong. Validated as syntactically
+correct JSON; not yet confirmed to deploy (pending the human re-running
+`databricks jobs create`).
+
 ### Remaining
-- `node_type_id` (m5.large) and `python_file` path are both now real
-  values, not placeholders - ready to deploy via `databricks jobs create
-  --json @resources/sync_weather_job.json`, then verify once with
-  `databricks jobs run-now`.
+- `resources/sync_weather_job.json` rewritten for serverless compute -
+  ready to redeploy via `databricks jobs create --json
+  @resources/sync_weather_job.json`, then verify once with `databricks
+  jobs run-now`.
 - Stretch: HNSW benchmark - built (`notebooks/hnsw_benchmark.py`), not yet
   run against live data.
