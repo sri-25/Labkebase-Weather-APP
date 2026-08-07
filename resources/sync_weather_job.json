@@ -14,7 +14,7 @@
     {
       "environment_key": "sync_weather_env",
       "spec": {
-        "client": "1",
+        "client": "5",
         "dependencies": [
           "psycopg2-binary",
           "sqlalchemy",
