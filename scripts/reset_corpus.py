@@ -1,21 +1,10 @@
 """
 Reset the weather corpus - wipes weather_documents (weather_embeddings
-goes with it automatically via ON DELETE CASCADE) and weather_watchlist.
+cascades automatically) and the old weather_watchlist table if it's
+still around.
 
-Why this exists: earlier experimentation (a bulk "sync all active US
-alerts" feature, since removed - see DECISIONS.md Phase 6) and the
-since-removed per-city watchlist (Phase 9) left behind a mix of
-deliberately-synced cities and orphaned county/region documents with no
-clear owner. Rather than trying to selectively untangle "legitimate" from
-"debris" with fragile heuristics, this gives you a clean slate to
-re-sync from deliberately (via POST /weather/sync or
-notebooks/sync_weather_job.py).
-
-Named reset_ (not test_) so plain `pytest` never touches it - see
-DECISIONS.md Phase 8 for why that naming convention matters here.
-
-Destructive - requires --yes to actually run, and prints row counts
-before/after so you can see exactly what happened.
+Named reset_, not test_, so plain `pytest` never collects it. Destructive
+- requires --yes to actually run; prints row counts before/after either way.
 
 Usage (from repo root):
     python scripts/reset_corpus.py            # dry run - shows counts, changes nothing

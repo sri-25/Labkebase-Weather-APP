@@ -1,15 +1,9 @@
 """
-Manual smoke test for embedding.py - NOT part of the automated pytest
-suite, since it downloads a real ~80MB model file the first time it runs.
-
-Named verify_ rather than test_ specifically so plain `pytest` (run from
-the project root, with no path argument) never tries to collect this file
-- it isn't a pytest test at all, it's a manual sanity check. See
-DECISIONS.md Phase 8 for the naming-collision bug this fixes.
-
-Run this once to confirm the model loads and produces 384-number vectors,
-and that semantically similar sentences end up numerically close together
-(a basic sanity check that the embeddings actually mean something).
+Manual smoke test for embedding.py - downloads a real ~80MB model file,
+so it's not part of the mocked pytest suite. Named verify_, not test_,
+so plain `pytest` never tries to collect it. Confirms the model loads,
+produces 384-number vectors, and that similar sentences score closer
+together than dissimilar ones.
 
 Usage (from repo root):
     python scripts/verify_embedding_model.py
@@ -46,6 +40,5 @@ sim_flood_sunny = cosine_similarity(vectors[0], vectors[2])
 
 print(f"\nSimilarity('Flash Flood Warning' vs 'Heavy rain...flooding'): {sim_flood_flood:.3f}")
 print(f"Similarity('Flash Flood Warning' vs 'Sunny skies...'):          {sim_flood_sunny:.3f}")
-print("\nExpect the first number to be noticeably higher than the second -")
-print("that's the model correctly recognizing the two flood sentences are")
-print("about the same thing, while the sunny-weather sentence is not.")
+print("\nFirst number should be noticeably higher - the two flood sentences")
+print("are about the same thing, the sunny one isn't.")

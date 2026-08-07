@@ -1,11 +1,7 @@
 """
-Temporary standalone script: creates the weather_documents table and
-prints its columns back so we can verify it worked, before wiring this
-into the full POST /weather/sync endpoint in app.py.
-
-ensure_weather_documents_table() below will be copied into app.py as-is
-once we build the Flask routes - not thrown away, just tested here first
-in isolation, one piece at a time.
+Standalone table setup: creates weather_documents + weather_embeddings
+in Lakebase and prints their columns back, for a one-time manual check
+that the schema landed correctly outside of running the full app.
 
 Usage (from repo root):
     python scripts/create_tables.py
@@ -48,13 +44,9 @@ def ensure_weather_documents_table() -> None:
 
 
 def ensure_weather_embeddings_table() -> None:
-    """
-    Create the weather_embeddings table in Lakebase if it doesn't exist yet.
-    Requires the pgvector extension - adds the VECTOR column type and the
-    <=> cosine-distance operator to Postgres. 384 dimensions matches
-    sentence-transformers/all-MiniLM-L6-v2 (see DECISIONS.md for why that
-    model was chosen).
-    """
+    """Create weather_embeddings if it doesn't exist. Requires the
+    pgvector extension (VECTOR type + <=> distance operator). 384
+    dimensions matches sentence-transformers/all-MiniLM-L6-v2."""
     lakebase.run_write("CREATE EXTENSION IF NOT EXISTS vector")
     lakebase.run_write(
         """
