@@ -184,6 +184,7 @@ Optional `"source_type": "alert"` or `""forecast"` narrows results to one type.
 - **No embedding staleness detection.** If a document's `narrative_text` changes (e.g. an alert gets updated) but its `id` stays the same, the ingestion script's "find unembedded documents" query won't catch it, since it only looks for documents with *zero* embedding rows, not *outdated* ones. A content hash comparison would close this gap.
 - **Stretch goals not yet built:** scheduled Databricks Job for automatic re-sync, `GET /weather/search` with an LLM-generated summary (basic RAG), and an HNSW vs. no-index latency benchmark.
 - **Single embedding model, no re-embedding path.** If the model ever changes, `weather_embeddings.embedding` would need a new dimension and a full re-embed — there's no migration tooling for that yet.
+- **Small model, limited semantic precision on short text.** `all-MiniLM-L6-v2` is a small, general-purpose model, not fine-tuned on weather text. Live-observed example: a query for "rain" scored closer to unrelated air-quality alerts than to a "Severe Thunderstorm Watch" alert that was already fully embedded (confirmed via the ingestion script finding zero unembedded documents) — a real gap in this model's grasp of weather-domain vocabulary, not a retrieval bug. A larger or domain-tuned embedding model would likely narrow this.
 
 ## Deliverables checklist
 

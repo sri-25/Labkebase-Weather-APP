@@ -1494,11 +1494,21 @@ Live Feed. Two possible explanations, not yet distinguished:
    "Severe Thunderstorm Watch" text - a known, already-documented
    property of this model on short formulaic NWS text (see Phase 0's
    `MIN_SIMILARITY` reasoning).
-**Next step (not yet done):** run `python notebooks/ingest_weather_embeddings.py`
-(no `--all`) - if it finds and backfills unembedded documents, that
-confirms case 1; if it finds zero, case 2 is confirmed and the honest
-answer is "the small model has real limits on short alert text," not a
-bug to chase further.
+**Resolved (live-checked):** ran `python notebooks/ingest_weather_embeddings.py`
+against the real corpus - "Found 0 unembedded documents. Nothing to do."
+Confirms case 2, not case 1: the Severe Thunderstorm Watch document was
+already fully embedded; nothing was silently dropped. The "rain" query
+genuinely scoring closer to unrelated air-quality alerts than to a
+thunderstorm watch is a real, honest limitation of a small
+general-purpose sentence embedding model (MiniLM, 384-dim, not
+weather-domain-tuned) on short, formulaic NWS alert text - not a
+retrieval bug. This is the same caveat already documented back in Phase 0
+around `MIN_SIMILARITY` (short weather text doesn't always separate
+cleanly by topic in embedding space) - this is a second, concrete,
+live-observed instance of that same known limitation rather than a new
+problem. Worth naming plainly in README_WEATHER.md's limitations section
+if it isn't already, since it's a real, defensible thing to say in a
+submission rather than something to hide.
 
 ### Noted, not fixed: sync feels slow
 Expected, not a bug: each `/weather/sync` call does NWS API calls +
