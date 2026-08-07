@@ -1194,10 +1194,89 @@ other gaps in one pass rather than one-at-a-time - confirmed
 so it wouldn't show up in a naive top-of-file import grep) and everything
 else was already covered.
 
+### Bug found live: `Invalid platform channel Client-1` - serverless environment version too old for this workspace
+Deployed the serverless rewrite above (`spec.client: "1"`), deleted+recreated
+the job, ran it - failed immediately at cluster launch, before any Python
+even ran: `Cannot launch the cluster. Cause: Invalid platform channel
+Client-1. Workspace doesn't support Client-1 channel for REPL.
+INVALID_PARAMETER_VALUE.` Root cause: serverless environment "client"
+versions are Databricks-side release channels, not something this project
+controls the meaning of - version `"1"` has been deprecated in this
+workspace. Researched via Databricks' serverless release notes
+(`docs.databricks.com/aws/en/release-notes/serverless/`) and the serverless
+dependencies doc - version `"5"` is the current channel (available since
+Feb 2026).
+**Fix:** bumped `resources/sync_weather_job.json`'s `environments[].spec.client`
+from `"1"` to `"5"`. Job deleted+recreated again (environment spec changes
+aren't picked up by a plain re-run), ran again - got past cluster launch
+this time and into the `__file__` bug documented above.
+
+### Bug found live: `psycopg2-binary` crashes with SIGABRT on import under Databricks serverless
+Got past the flask fix, further than any previous run - then died with
+`exit code 134` (SIGABRT) partway through `import psycopg2`, before any of
+this project's own code ran. `databricks jobs get-run-output` on the
+task-level run_id (not the parent job-run id - see the diagnostic pattern
+established above) gave the actual crash trace: abort inside
+`psycopg2/__init__.py:51`, triggered by `lakebase.py:20`'s `import psycopg2`,
+itself triggered by `sync_weather_job.py`'s `from app import ...` (`app.py`
+imports `lakebase` at module level).
+
+Root-caused as a genuine platform-level conflict, not an app bug: `psycopg2-binary`'s
+wheel bundles its own OpenSSL; the Databricks serverless Python 3.12 process
+already has `grpc`'s own bundled OpenSSL loaded before any application code
+runs; the two collide at the C-extension level and abort the process. This
+is a different failure than the one already documented and fixed in Phase
+0/1.5 (having both `psycopg2` and `psycopg2-binary` installed
+simultaneously) - confirmed by testing a completely clean, single-package
+`psycopg2-binary` install, which still crashed identically. Cross-referenced
+against a similar unresolved GitHub issue (`docling-project/docling#3201`)
+showing the same SIGABRT class of crash for a different native-extension
+library on the identical Databricks Standard v5 / Python 3.12 serverless
+runtime - this looks like a genuine platform-level gap, not something
+specific to this project's code.
+
+**A competing diagnosis was raised and rejected:** another tool suggested the
+real cause was `app.py` eagerly loading the sentence-transformers/torch
+embedding model at import time (`get_model()`, lines 40-42), causing an
+OOM that only coincidentally surfaced during the psycopg2 import. Checked
+against the actual trace and ruled out directly: the crash occurs at
+`app.py:26` (`import lakebase`), which executes before line 40-42 in
+top-to-bottom module execution - torch/sentence_transformers are never even
+reached. The crash dump's "Extension modules" list also didn't include
+torch or sentence_transformers, confirming they were never loaded. Not
+applied.
+
+**Fix: migrated from `psycopg2-binary` to `psycopg[binary]` (psycopg3).**
+psycopg3's binary wheel doesn't bundle OpenSSL the same conflicting way, and
+this project's `%s`-style SQL parameter placeholders needed no changes - a
+driver swap, not a query rewrite. Changes:
+- `lakebase.py` - `psycopg.connect(url, row_factory=psycopg.rows.dict_row)`
+  instead of `psycopg2.connect(url, cursor_factory=RealDictCursor)`;
+  `get_engine()` now rewrites the URL to `postgresql+psycopg://` so
+  SQLAlchemy picks the psycopg3 dialect instead of defaulting to the
+  no-longer-installed psycopg2 one.
+- `embed_pipeline.py` - psycopg3 has no `execute_values()` equivalent
+  (that was a psycopg2-only extra), so `upsert_chunk_rows()` now hand-builds
+  one `INSERT ... VALUES (%s,...,%s::vector), (%s,...,%s::vector), ...` with
+  a flattened parameter list instead.
+- `requirements.txt` / `resources/sync_weather_job.json` - `psycopg2-binary` ->
+  `psycopg[binary]`.
+- `tests/test_embed_pipeline.py` - rewrote the upsert test to assert on the
+  single hand-built multi-row `execute()` call instead of mocking
+  `execute_values`.
+- `README.md` / `README_WEATHER.md` / notebook docstrings - updated stale
+  `psycopg2` references; `README_WEATHER.md`'s driver section now honestly
+  documents the full pg8000 -> psycopg2 -> psycopg3 history and why each
+  switch happened, instead of just naming the current driver.
+
+Verified locally: `psycopg[binary]` installs and imports cleanly
+(`psycopg 3.3.4`), both rewritten modules parse, full suite 100/100 passing.
+**Not yet redeployed or live-tested against Databricks** - that's the next
+step.
+
 ### Remaining
-- Job's `environments` spec changed, which the existing job (deployed via
-  `jobs create`) doesn't pick up automatically - needs the job
-  deleted+recreated (or `jobs reset`) with the updated JSON, then re-run.
-  Not yet confirmed working end to end on real infra.
+- psycopg3 migration above needs to actually be deployed and run against
+  real Databricks serverless infra to confirm it fixes the SIGABRT (fix is
+  implemented and locally verified, not yet proven live).
 - Stretch: HNSW benchmark - built (`notebooks/hnsw_benchmark.py`), not yet
   run against live data.

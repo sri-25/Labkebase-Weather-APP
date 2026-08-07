@@ -20,7 +20,7 @@ app.py, which is a known wart - the cleaner fix is extracting a shared
 sync_pipeline module both app.py and this script import from, still
 deferred to a future codebase cleanup pass.
 
-Plain psycopg2 + requests script (NOT Spark) - matches the homework
+Plain psycopg3 + requests script (NOT Spark) - matches the homework
 spec's explicit note that Spark JDBC can't reliably write pgvector VECTOR
 columns or run ON CONFLICT upserts against Lakebase. Runs fine as a
 Databricks Job "Python script" task, a local terminal, or cron - no

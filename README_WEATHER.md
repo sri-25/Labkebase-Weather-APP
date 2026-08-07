@@ -92,9 +92,13 @@ HNSW index on `embedding` using `vector_cosine_ops`, plus an index on `document_
 
 `sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions — the same model the ticker-news pipeline uses, so both stay compatible with the same distance-operator conventions. Small enough to run on a laptop CPU with no GPU.
 
-## Database driver: psycopg2, not pg8000
+## Database driver: psycopg3 (started on psycopg2, matching the reference app)
 
-Worth calling out explicitly: an early draft of this project used `pg8000` instead of `psycopg2`, based on a since-superseded fork of the reference app that had hit a SIGABRT crash from psycopg2's bundled libssl colliding with a Databricks runtime's SSL library. The instructor's actual canonical repo (`EcZachly/databricks-lakebase-app-day-2`) uses plain `psycopg2` + `RealDictCursor` throughout, including its ingestion notebook — the real fix for that crash is not installing `psycopg2` and `psycopg2-binary` at the same time, not switching drivers. This project uses `psycopg2-binary` + `RealDictCursor` + SQLAlchemy, matching the canonical pattern exactly. Full story in `DECISIONS.md`.
+This went through two corrections, both driven by a real crash rather than a preference:
+
+An early draft used `pg8000` instead of `psycopg2`, based on a since-superseded fork of the reference app that had hit a SIGABRT crash from psycopg2's bundled libssl colliding with a Databricks runtime's SSL library. The instructor's actual canonical repo (`EcZachly/databricks-lakebase-app-day-2`) uses plain `psycopg2` + `RealDictCursor` throughout, so the project switched to match it exactly.
+
+That worked everywhere it was tested locally — until the scheduled Databricks Job (running on serverless compute) hit the same class of SIGABRT on a completely clean, single-package `psycopg2-binary` install: its bundled OpenSSL collides with `grpc`'s bundled OpenSSL, both already loaded in that Python 3.12 serverless process. Not a duplicate-install issue this time — genuinely platform-specific. Migrated to `psycopg` (psycopg3), whose binary wheel doesn't bundle OpenSSL the same conflicting way. The `%s`-style parameter placeholders used everywhere in this project's SQL were unaffected by the swap; only `lakebase.py`'s connection/cursor setup and `embed_pipeline.py`'s bulk upsert (psycopg3 has no `execute_values()` equivalent, so that's now a hand-built multi-row `INSERT`) changed. Full story in `DECISIONS.md`.
 
 ## How to run end-to-end
 
@@ -186,7 +190,7 @@ Optional `"source_type": "alert"` or `""forecast"` narrows results to one type.
 - [x] `weather_client.py` — NWS client + geocoding
 - [x] `app.py` — `POST /weather/sync`, `POST /weather/search`
 - [x] `lakebase.py` + `sql/*.sql` — DDL for `weather_documents`, `weather_embeddings`
-- [x] `notebooks/ingest_weather_embeddings.py` — psycopg2-based embedding pipeline
+- [x] `notebooks/ingest_weather_embeddings.py` — psycopg3-based embedding pipeline
 - [x] `README_WEATHER.md`
 - [x] Upsert/dedup on `id` (base requirement, via `ON CONFLICT`)
 - [x] `source_type` filter on retrieval

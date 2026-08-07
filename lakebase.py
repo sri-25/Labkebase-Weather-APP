@@ -6,9 +6,14 @@ e.g. postgresql://role:password@host:5432/databricks_postgres?sslmode=require)
 pointing at a native Postgres role with a static, non-expiring password.
 This keeps setup to a single secret instead of several separate env vars.
 
-Matches the instructor's canonical reference app's pattern exactly
-(psycopg2 + RealDictCursor + SQLAlchemy) - see DECISIONS.md "Phase 1.5"
-for why an earlier pg8000-based draft was corrected back to this.
+Originally matched the instructor's canonical reference app's pattern
+exactly (psycopg2 + RealDictCursor + SQLAlchemy) - see DECISIONS.md
+"Phase 1.5". Switched to psycopg3 later (see DECISIONS.md "Phase 10 -
+scheduled job") after psycopg2-binary crashed with SIGABRT on import
+under Databricks serverless - its bundled OpenSSL collides with grpc's
+in that runtime. psycopg3's binary wheel doesn't bundle OpenSSL the same
+way, and the %s-style parameter placeholders used everywhere in this
+project stayed unchanged, so this was a driver swap, not a query rewrite.
 """
 
 from __future__ import annotations
@@ -17,9 +22,8 @@ import base64
 import os
 from contextlib import contextmanager
 
-import psycopg2
+import psycopg
 from databricks.sdk import WorkspaceClient
-from psycopg2.extras import RealDictCursor
 from sqlalchemy import create_engine
 
 _w = WorkspaceClient()
@@ -36,9 +40,10 @@ def _lakebase_url() -> str:
 
 @contextmanager
 def get_connection():
-    """Yield a raw psycopg2 connection with a RealDictCursor factory (rows
-    come back as dicts, e.g. row["headline"], instead of positional tuples)."""
-    conn = psycopg2.connect(_lakebase_url(), cursor_factory=RealDictCursor)
+    """Yield a raw psycopg connection with dict_row as the row factory
+    (rows come back as dicts, e.g. row["headline"], instead of positional
+    tuples - same shape psycopg2's RealDictCursor gave us)."""
+    conn = psycopg.connect(_lakebase_url(), row_factory=psycopg.rows.dict_row)
     try:
         yield conn
     finally:
@@ -47,8 +52,13 @@ def get_connection():
 
 def get_engine():
     """Return a SQLAlchemy engine for Lakebase (handy for pandas.read_sql
-    or other tools that expect a SQLAlchemy-style connection)."""
-    return create_engine(_lakebase_url())
+    or other tools that expect a SQLAlchemy-style connection). SQLAlchemy
+    needs the postgresql+psycopg:// scheme to pick the psycopg3 driver
+    instead of defaulting to (the no-longer-installed) psycopg2."""
+    url = _lakebase_url()
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return create_engine(url)
 
 
 def run_query(sql: str, params: tuple | dict | None = None) -> list[dict]:

@@ -17,8 +17,6 @@ implementation instead of drifting apart over time.
 """
 from __future__ import annotations
 
-from psycopg2.extras import execute_values
-
 import lakebase
 from chunking import chunk_text
 from embedding import EMBEDDING_MODEL_NAME, embed_texts
@@ -77,27 +75,31 @@ def build_chunk_rows(documents: list[dict]) -> list[tuple]:
 
 
 def upsert_chunk_rows(rows: list[tuple]) -> int:
-    """Batched upsert via execute_values - one round trip for the whole
-    batch instead of one INSERT per row."""
+    """Batched upsert - one INSERT statement with N value-groups, one round
+    trip for the whole batch instead of one INSERT per row. Built manually
+    (rather than psycopg2.extras.execute_values, which psycopg3 has no
+    direct equivalent for) by repeating the value-group placeholder and
+    flattening the row tuples into one parameter list."""
     if not rows:
         return 0
 
+    value_groups = ", ".join(["(%s, %s, %s, %s, %s::vector, %s, now())"] * len(rows))
+    flat_params = [value for row in rows for value in row]
+
     with lakebase.get_connection() as conn:
         with conn.cursor() as cur:
-            execute_values(
-                cur,
-                """
+            cur.execute(
+                f"""
                 INSERT INTO weather_embeddings
                     (id, document_id, chunk_index, chunk_text, embedding, model_name, created_at)
-                VALUES %s
+                VALUES {value_groups}
                 ON CONFLICT (id) DO UPDATE
                     SET chunk_text = EXCLUDED.chunk_text,
                         embedding = EXCLUDED.embedding,
                         model_name = EXCLUDED.model_name,
                         created_at = now()
                 """,
-                rows,
-                template="(%s, %s, %s, %s, %s::vector, %s, now())",
+                flat_params,
             )
             conn.commit()
     return len(rows)

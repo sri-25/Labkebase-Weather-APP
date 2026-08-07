@@ -1,7 +1,7 @@
 """
 Ingest weather_documents -> weather_embeddings (Lakebase).
 
-Plain psycopg2-based Python script (NOT Spark, NOT spark.write.jdbc - the
+Plain psycopg3-based Python script (NOT Spark, NOT spark.write.jdbc - the
 homework spec calls this out explicitly since Spark JDBC can't reliably
 write pgvector VECTOR columns or run ON CONFLICT upserts against this
 Lakebase instance). Safe to run from a terminal, a cron job, or a

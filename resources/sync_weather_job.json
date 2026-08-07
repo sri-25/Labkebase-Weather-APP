@@ -17,7 +17,7 @@
         "client": "5",
         "dependencies": [
           "flask",
-          "psycopg2-binary",
+          "psycopg[binary]",
           "sqlalchemy",
           "requests",
           "sentence-transformers",

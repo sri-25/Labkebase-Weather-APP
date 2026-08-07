@@ -138,28 +138,31 @@ def test_upsert_chunk_rows_empty_list_does_not_touch_db():
     _fake_lakebase.get_connection.assert_not_called()
 
 
-def test_upsert_chunk_rows_calls_execute_values_with_vector_cast_and_commits(monkeypatch):
+def test_upsert_chunk_rows_builds_one_multi_row_insert_and_commits(monkeypatch):
+    """psycopg3 has no execute_values() equivalent (see DECISIONS.md
+    Phase 10 - psycopg2 -> psycopg3 driver swap), so upsert_chunk_rows
+    builds one INSERT with N value-groups by hand instead. Verify the
+    generated SQL has one value-group per row, the vector cast, the
+    upsert clause, and that params are the flattened row tuples in
+    order (not passed as a nested list, since a plain cur.execute() call
+    - not execute_values - only accepts a flat parameter sequence)."""
     mock_cur = MagicMock()
     mock_conn = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
     _fake_lakebase.get_connection.return_value.__enter__.return_value = mock_conn
 
-    captured = {}
-
-    def fake_execute_values(cur, sql, rows, template=None):
-        captured["sql"] = sql
-        captured["rows"] = rows
-        captured["template"] = template
-
-    monkeypatch.setattr(embed_pipeline, "execute_values", fake_execute_values)
-
-    rows = [("doc1_0", "doc1", 0, "text", "[0.1,0.2]", "model-x")]
+    rows = [
+        ("doc1_0", "doc1", 0, "text one", "[0.1,0.2]", "model-x"),
+        ("doc1_1", "doc1", 1, "text two", "[0.3,0.4]", "model-x"),
+    ]
     written = embed_pipeline.upsert_chunk_rows(rows)
 
-    assert written == 1
-    assert "ON CONFLICT (id) DO UPDATE" in captured["sql"]
-    assert "%s::vector" in captured["template"]
-    assert captured["rows"] == rows
+    assert written == 2
+    mock_cur.execute.assert_called_once()
+    sql, params = mock_cur.execute.call_args[0]
+    assert "ON CONFLICT (id) DO UPDATE" in sql
+    assert sql.count("%s::vector") == 2  # one value-group per row
+    assert params == [value for row in rows for value in row]
     mock_conn.commit.assert_called_once()
 
 
@@ -169,7 +172,6 @@ def test_embed_documents_now_chains_build_and_upsert(monkeypatch):
     mock_conn = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
     _fake_lakebase.get_connection.return_value.__enter__.return_value = mock_conn
-    monkeypatch.setattr(embed_pipeline, "execute_values", lambda *a, **k: None)
 
     docs = [{"id": "doc1", "narrative_text": "short text"}]
     written = embed_pipeline.embed_documents_now(docs)

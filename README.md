@@ -34,7 +34,7 @@ curl -X POST http://localhost:8000/weather/search \
 - `weather_client.py` — NWS API client (harvest alerts + forecasts, geocoding)
 - `app.py` — `POST /weather/sync`, `POST /weather/search`
 - `lakebase.py` + `sql/` — Postgres/pgvector schema (`weather_documents`, `weather_embeddings`)
-- `notebooks/ingest_weather_embeddings.py` — psycopg2 chunk → embed → upsert pipeline
+- `notebooks/ingest_weather_embeddings.py` — psycopg3 chunk → embed → upsert pipeline
 - `tests/` — 100 passing unit tests (fully mocked, no live infra needed)
 
 **Stretch goals:**
