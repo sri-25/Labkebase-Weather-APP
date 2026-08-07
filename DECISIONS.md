@@ -1146,10 +1146,38 @@ serverless - one less thing to get wrong. Validated as syntactically
 correct JSON; not yet confirmed to deploy (pending the human re-running
 `databricks jobs create`).
 
+### Bug found live: `NameError: name '__file__' is not defined` on the deployed job
+After fixing the environment version, the job got further (environment
+installed successfully, per the driver logs) but the task itself failed.
+`databricks jobs get-run-output <task_run_id>` gave the real traceback
+(the parent run's generic "Workload failed, see run output for details"
+message was useless on its own - had to drill into the task-level run_id,
+not the job-run id, to get this):
+```
+NameError: name '__file__' is not defined
+  File "/Workspace/Users/.../notebooks/sync_weather_job.py", line 42
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+```
+Root cause: Databricks' `spark_python_task` runner executes the script via
+`exec(compile(f.read(), filename, 'exec'))` rather than a normal `python
+file.py` process invocation - so `__file__` is simply never defined in
+that execution context. This is invisible when testing locally
+(`python notebooks/sync_weather_job.py` always has `__file__` set, same
+for pytest) - only surfaces when actually run as a Databricks Job, which
+is exactly why this had to be caught live rather than by any amount of
+local testing.
+
+**Fix:** wrapped the `Path(__file__)` lookup in try/except NameError,
+falling back to `Path(sys.argv[0])` - `spark_python_task` sets `sys.argv[0]`
+to the `python_file` path from the job spec, so this resolves correctly in
+both contexts. Applied to all three `notebooks/*.py` scripts that use this
+pattern (`sync_weather_job.py`, `ingest_weather_embeddings.py`,
+`hnsw_benchmark.py` - the ones that could plausibly run as a Databricks
+Job task); left `scripts/*.py` alone since those are local-only manual
+utilities where `__file__` is always defined. 100/100 tests still passing.
+
 ### Remaining
-- `resources/sync_weather_job.json` rewritten for serverless compute -
-  ready to redeploy via `databricks jobs create --json
-  @resources/sync_weather_job.json`, then verify once with `databricks
-  jobs run-now`.
+- Redeploy with this fix and re-run - not yet confirmed working end to
+  end on real infra.
 - Stretch: HNSW benchmark - built (`notebooks/hnsw_benchmark.py`), not yet
   run against live data.

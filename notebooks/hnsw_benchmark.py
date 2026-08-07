@@ -34,7 +34,18 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Allow running this script directly (python notebooks/hnsw_benchmark.py)
+# without needing the project root on PYTHONPATH already.
+try:
+    _this_file = Path(__file__).resolve()
+except NameError:
+    # Databricks' spark_python_task runs the file via exec(), not a normal
+    # `python file.py` invocation, so __file__ is never defined there -
+    # sys.argv[0] (the python_file path from the job spec) is the reliable
+    # fallback in that context. See notebooks/sync_weather_job.py for where
+    # this was first found live.
+    _this_file = Path(sys.argv[0]).resolve()
+sys.path.insert(0, str(_this_file.parent.parent))
 
 import lakebase
 from embedding import embed_texts

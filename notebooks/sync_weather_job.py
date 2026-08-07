@@ -39,7 +39,16 @@ from pathlib import Path
 
 # Allow running this script directly (python notebooks/sync_weather_job.py)
 # without needing the project root on PYTHONPATH already.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+try:
+    _this_file = Path(__file__).resolve()
+except NameError:
+    # Databricks' spark_python_task runs the file via exec(), not a normal
+    # `python file.py` invocation, so __file__ is never defined there -
+    # sys.argv[0] (the python_file path from the job spec) is the reliable
+    # fallback in that context. Found live: a scheduled-job run failed with
+    # "NameError: name '__file__' is not defined" until this was added.
+    _this_file = Path(sys.argv[0]).resolve()
+sys.path.insert(0, str(_this_file.parent.parent))
 
 from app import DEFAULT_LOCATIONS, WeatherClient, _sync_one_location
 
