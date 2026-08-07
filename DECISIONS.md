@@ -1359,4 +1359,74 @@ seen running against real data - next step is the human running
   run against live data.
 - New UI not yet live-verified against real Lakebase data (built and
   locally sanity-checked only).
-- Databricks Apps deployment - researching next.
+
+---
+
+## Phase 12 — Deploying as a Databricks App
+
+Researched Databricks Apps (a separate feature from the scheduled Job -
+this hosts `app.py` itself persistently with a real URL, vs. the Job
+which just runs `sync_weather_job.py` on a timer with no HTTP surface).
+Read the current (2026) `deploy`, `app-runtime`, `system-env`, and
+`resources` docs directly rather than relying on training knowledge,
+since this is a fast-evolving platform feature.
+
+### Decision: `app.yaml` = just `command: ['python', 'app.py']`
+Databricks Apps auto-detects Flask (via `requirements.txt`) and injects
+`FLASK_RUN_PORT` / `FLASK_RUN_HOST=0.0.0.0` into the runtime automatically
+- and `app.py`'s existing `__main__` block already reads exactly those two
+env vars (with the same defaults used for local runs), so no `env:`
+section is needed in `app.yaml` at all. Deliberately did NOT follow
+Databricks' own documented Gunicorn example for Flask apps
+(`command: [gunicorn, app:app, -w, 4]`) - that example doesn't show how
+Gunicorn would bind to the app's assigned port, and Gunicorn doesn't read
+`FLASK_RUN_PORT` the way Flask's own dev server does. Pinning the command
+to `python app.py` removes the ambiguity around Databricks' documented
+default ("runs the first `.py` file it finds") and reuses the exact code
+path already proven working locally and in the scheduled Job, rather than
+introducing a new WSGI server + port-binding config this late.
+
+### Fix: `app.run(..., threaded=True)`
+The new UI polls `/weather/stats` (60s) and `/weather/feed/recent` (30s)
+on independent timers, on top of whatever a user is doing (search, sync).
+Flask's dev server handles one request at a time by default - without
+`threaded=True`, those background polls would queue up behind a slow
+in-flight request (a sync call does real NWS + Lakebase + embedding work,
+not instant). Cheap, one-line fix, no behavior change for local dev.
+
+### Key gotcha to solve at deploy time: the app runs as its OWN service principal, not as you
+The scheduled Job runs as the human's own identity ("Run as:
+srijan2554@gmail.com" - visible on the Jobs UI page), so it inherits
+whatever access their personal account already has. Databricks Apps are
+different: each app gets its own dedicated service principal that starts
+with ZERO permissions - it does not inherit anything from the person who
+created the app. Two things this app's service principal needs explicit
+grants for before it will work, done via the "App resources" step in the
+Apps UI (add-resource, not code):
+1. **Secret resource** - `weather` scope, `lakebase-url` key, "Can read"
+   permission. Without this, `lakebase.py`'s
+   `WorkspaceClient().secrets.get_secret(...)` call fails at connection
+   time (this code path is unchanged - no new secret-fetching mechanism
+   was introduced for Apps; only the permission grant is new).
+2. **Model serving endpoint resource** -
+   `databricks-meta-llama-3-3-70b-instruct`, "Can query" permission.
+   Without this, the LLM summary feature (`llm_summary.py`) fails - search
+   itself still works, summarize just returns `summary_error`
+   (best-effort, matches its existing failure-handling design).
+
+### Decision: deploy from the workspace folder (existing Databricks Repo), not a fresh Git integration
+Databricks Apps supports deploying either from an uploaded/synced
+workspace folder or directly from a Git repository reference. This
+project already has a Databricks Repo connected
+(`/Workspace/Users/srijan2554@gmail.com/Labkebase-Weather-APP`, set up in
+Phase 10) and pulling the latest commits. Deploying from that existing
+folder avoids the extra step Git-source deployment requires for private
+repos (configuring a Git credential/personal access token specifically
+for the app's service principal) - one less moving part this late in the
+project, and consistent with how the scheduled Job is already deployed
+(also reads from that same synced folder).
+
+### Remaining
+- Not yet deployed live - next step is the human creating the app via
+  the Databricks Apps UI, granting the two resource permissions above,
+  and deploying from the existing workspace folder.

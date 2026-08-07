@@ -473,8 +473,17 @@ def _upsert_documents_batch(documents: list[dict]) -> int:
 
 
 if __name__ == "__main__":
+    # FLASK_RUN_HOST / FLASK_RUN_PORT: same env vars whether this runs
+    # locally (defaults below) or as a Databricks App - the Apps runtime
+    # auto-detects Flask (via requirements.txt) and injects these two
+    # itself, so no app.yaml env config is needed just to bind correctly.
     host = os.getenv("FLASK_RUN_HOST", "0.0.0.0")
     port = int(os.getenv("FLASK_RUN_PORT", 8000))
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    # threaded=True: the UI polls /weather/stats and /weather/feed/recent
+    # on independent timers while a user might also be mid-search or
+    # mid-sync - without this, Flask's dev server handles one request at
+    # a time and later polls queue up behind whichever request is slowest
+    # (a sync call, which does real NWS + Lakebase + embedding work).
     print(f"Flask app running on http://{host}:{port}")
-    app.run(debug=debug, host=host, port=port)
+    app.run(debug=debug, host=host, port=port, threaded=True)
