@@ -1274,9 +1274,24 @@ Verified locally: `psycopg[binary]` installs and imports cleanly
 **Not yet redeployed or live-tested against Databricks** - that's the next
 step.
 
+### Verification: psycopg3 fix confirmed live - scheduled job runs clean end to end
+Pushed, pulled into the Databricks Repo, job deleted+recreated with the
+updated JSON, run once more. Full run output: `import lakebase` (psycopg3)
+succeeded silently, the embedding model loaded normally
+(`sentence-transformers/all-MiniLM-L6-v2` downloaded from HF, no crash),
+and the sync itself completed cleanly:
+```
+Syncing 3 location(s): ['Chicago, IL', 'Austin, TX', 'Miami, FL']
+  Chicago, IL: 14 document(s)
+  Austin, TX: 14 document(s)
+  Miami, FL: 15 document(s)
+Done. Synced 43 document(s) across 3 location(s).
+```
+No traceback, no SIGABRT, no `error`/`error_trace` in the run output - the
+exact shape a successful run should have. **SIGABRT bug fully resolved;
+scheduled job (stretch goal) confirmed working end to end on real
+Databricks serverless infra, cron-scheduled hourly going forward.**
+
 ### Remaining
-- psycopg3 migration above needs to actually be deployed and run against
-  real Databricks serverless infra to confirm it fixes the SIGABRT (fix is
-  implemented and locally verified, not yet proven live).
 - Stretch: HNSW benchmark - built (`notebooks/hnsw_benchmark.py`), not yet
   run against live data.
