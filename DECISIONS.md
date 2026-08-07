@@ -1292,6 +1292,71 @@ exact shape a successful run should have. **SIGABRT bug fully resolved;
 scheduled job (stretch goal) confirmed working end to end on real
 Databricks serverless infra, cron-scheduled hourly going forward.**
 
+---
+
+## Phase 11 — UI overhaul: stat strip, sync-from-UI, distinct visual identity
+
+The human shared two reference-app screenshots for inspiration (neither was
+this project's own UI - confirmed by re-reading the actual
+`templates/index.html`, which turned out to be much simpler than either
+reference: no stat cards, no sync-from-UI panel, just a search box and a
+feed list) and asked for a UI that's "different, very thoughtful, well
+designed, clean and sleek" - inspired by, not copied from, the references.
+
+### Decision: reintroduce a sync trigger in the UI, but stay stateless
+Both references prominently featured a "sync weather data" panel with
+per-city toggles. Phase 9 deliberately removed the *watchlist* (a
+persisted "tracked cities" table + its own CRUD surface) because it kept
+generating edge cases disproportionate to its value. Bringing back a
+sync panel doesn't reverse that decision - the new panel is just a nicer
+front end over the existing `POST /weather/sync` call (client-side chip
+toggles + a free-text "add a city" field, no new table, no persisted
+state). Functionally identical to running the equivalent curl command by
+hand; only the ergonomics changed.
+
+### Feature: `GET /weather/stats`
+New read-only endpoint - three cheap `COUNT(*)`/`COUNT(DISTINCT ...)`
+queries (documents, embeddings, distinct locations) plus the embedding
+model name/dimension - powers the UI's stat strip. Verified via 2 new
+tests (`test_stats_returns_counts_and_model_info`,
+`test_stats_ensures_tables_before_querying`) - 102/102 passing.
+
+### Fix (caught before it shipped): don't guess source_type from headline text
+First draft of the new result cards inferred an alert-vs-forecast badge
+from a regex against the headline (`/advisory|warning|watch|alert/i`) -
+`POST /weather/search`'s response never actually included `source_type`,
+so this would have been a fabricated-looking signal, the exact thing this
+project has deliberately avoided elsewhere (the `MIN_SIMILARITY`
+low-confidence floor, the LLM summary's honesty guard). Caught it on
+review rather than shipping a guess dressed up as data.
+**Fix:** added `d.source_type` to the search SQL's `SELECT` and to the
+response dict; the badge now reads the real field. Updated the 4 affected
+tests that mock `run_query` return rows accordingly. Still 102/102 after
+the fix.
+
+### Rewrite: `templates/index.html`
+Full rewrite, still a single self-contained file (inline CSS/JS, no build
+step - same convention as before). Distinct dark visual identity (not a
+copy of either reference): near-black background with a subtle two-tone
+sky-blue/indigo radial glow, glass-panel cards, a signature gradient used
+consistently for primary actions/accents/similarity bars, inline SVG
+icons (no external icon font dependency - keeps the file offline-safe,
+relevant since it may run inside a sandboxed Databricks Apps environment
+with restricted egress). Structure: stat strip (documents / embeddings /
+locations / vector model, animated count-up on load) -> two-column sync +
+search panels -> a horizontally-scrolling "live feed" strip (replaces the
+old fixed sidebar) -> a one-line factual footer. Search results now show
+a real similarity bar (not just a number) and the corrected source_type
+badge; sync results show a per-location success/fail breakdown.
+HTML tag balance and JS syntax verified locally (Python `html.parser` +
+Node `Function()` parse check - can't fully exercise fetch()-driven
+behavior without live Lakebase, same limitation as always). Not yet
+seen running against real data - next step is the human running
+`python app.py` locally and syncing/searching for real.
+
 ### Remaining
 - Stretch: HNSW benchmark - built (`notebooks/hnsw_benchmark.py`), not yet
   run against live data.
+- New UI not yet live-verified against real Lakebase data (built and
+  locally sanity-checked only).
+- Databricks Apps deployment - researching next.

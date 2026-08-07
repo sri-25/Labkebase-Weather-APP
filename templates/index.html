@@ -6,199 +6,457 @@
 <title>Weather Intelligence</title>
 <style>
   :root {
-    --bg: #f6f7f9;
-    --panel: #ffffff;
-    --border: #e2e5ea;
-    --text: #1c2027;
-    --text-muted: #6b7280;
-    --accent: #2563eb;
-    --accent-soft: #eaf0fe;
-    --alert: #dc2626;
-    --alert-soft: #fdeaea;
-    --forecast: #0d9488;
-    --forecast-soft: #e6f7f5;
-    --radius: 10px;
+    --bg: #090c11;
+    --bg-glow-a: rgba(56, 189, 248, 0.10);
+    --bg-glow-b: rgba(129, 140, 248, 0.10);
+    --panel: rgba(255, 255, 255, 0.035);
+    --panel-strong: rgba(255, 255, 255, 0.055);
+    --border: rgba(255, 255, 255, 0.09);
+    --border-soft: rgba(255, 255, 255, 0.06);
+    --text: #eaeef6;
+    --text-muted: #8b95a8;
+    --text-faint: #5b6478;
+    --accent-a: #38bdf8;
+    --accent-b: #818cf8;
+    --accent-gradient: linear-gradient(120deg, var(--accent-a), var(--accent-b));
+    --alert: #fb7185;
+    --alert-soft: rgba(251, 113, 133, 0.12);
+    --forecast: #34d399;
+    --forecast-soft: rgba(52, 211, 153, 0.12);
+    --radius-lg: 18px;
+    --radius-md: 12px;
+    --radius-sm: 8px;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", ui-sans-serif, sans-serif;
     background: var(--bg);
     color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    overflow-x: hidden;
   }
-  header {
-    padding: 20px 28px;
-    border-bottom: 1px solid var(--border);
-    background: var(--panel);
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(650px 400px at 12% -5%, var(--bg-glow-a), transparent 60%),
+      radial-gradient(650px 400px at 88% 0%, var(--bg-glow-b), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
   }
-  header h1 { margin: 0; font-size: 19px; font-weight: 700; }
-  header p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
 
+  .shell { position: relative; z-index: 1; max-width: 1220px; margin: 0 auto; padding: 34px 24px 60px; }
+
+  /* ---------- Header ---------- */
+  header.top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 11px;
+    background: var(--accent-gradient);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 18px rgba(56, 189, 248, 0.28);
+    flex-shrink: 0;
+  }
+  .brand-mark svg { width: 20px; height: 20px; }
+  .brand-text h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .brand-text p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-muted); }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    padding: 7px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--forecast);
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+    animation: dot-pulse 2.4s ease-out infinite;
+  }
+  @keyframes dot-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+  }
+
+  /* ---------- Stat strip ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 16px 18px;
+    backdrop-filter: blur(14px);
+  }
+  .stat-card .stat-label {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; color: var(--text-faint); display: flex; align-items: center; gap: 6px;
+  }
+  .stat-card .stat-label svg { width: 12px; height: 12px; opacity: 0.8; }
+  .stat-card .stat-value { font-size: 25px; font-weight: 700; margin-top: 6px; letter-spacing: -0.01em; }
+  .stat-card .stat-value.sub { font-size: 15px; font-weight: 600; color: var(--text); }
+  .stat-card .stat-value .unit { font-size: 12px; color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+
+  /* ---------- Layout ---------- */
   .layout {
     display: grid;
-    grid-template-columns: 1fr 340px;
-    gap: 20px;
-    max-width: 1180px;
-    margin: 24px auto;
-    padding: 0 20px;
+    grid-template-columns: 360px 1fr;
+    gap: 16px;
     align-items: start;
   }
-  @media (max-width: 860px) {
-    .layout { grid-template-columns: 1fr; }
-  }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
 
   .panel {
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 18px 20px;
-    margin-bottom: 20px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    padding: 22px;
+    backdrop-filter: blur(14px);
   }
-  .panel h2 {
-    margin: 0 0 12px;
-    font-size: 14px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--text-muted);
+  .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+  .panel-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .panel-sub { font-size: 12.5px; color: var(--text-muted); margin: 4px 0 16px; line-height: 1.5; }
+
+  .tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--accent-a);
+    background: rgba(56, 189, 248, 0.08);
+    white-space: nowrap;
   }
 
-  .search-row { display: flex; gap: 8px; flex-wrap: wrap; }
-  input[type=text] {
-    flex: 1;
-    min-width: 180px;
-    padding: 10px 12px;
+  /* ---------- Sync panel ---------- */
+  .chip-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px;
+    border-radius: 999px;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 14px;
-  }
-  select {
-    padding: 10px 8px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 13px;
-    background: #fff;
-  }
-  button {
-    padding: 10px 16px;
-    border: none;
-    border-radius: 8px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
+    background: var(--panel-strong);
+    font-size: 12.5px;
+    color: var(--text-muted);
     cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
   }
-  button:hover { opacity: 0.9; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  button.secondary {
-    background: var(--accent-soft);
-    color: var(--accent);
+  .chip:hover { border-color: rgba(56, 189, 248, 0.4); color: var(--text); }
+  .chip.active {
+    color: #04121a;
+    background: var(--accent-gradient);
+    border-color: transparent;
+    font-weight: 600;
   }
+  .chip .rm { opacity: 0.6; font-size: 11px; }
+
+  .add-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .field {
+    flex: 1;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.22);
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .field::placeholder { color: var(--text-faint); }
+  .field:focus { border-color: var(--accent-a); }
+
+  .limit-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .limit-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+  .limit-row input[type=number] {
+    width: 70px; padding: 8px 10px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: rgba(0,0,0,0.22); color: var(--text); font-size: 13px;
+  }
+
+  button.primary {
+    width: 100%;
+    padding: 12px 16px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent-gradient);
+    color: #04121a;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+    box-shadow: 0 8px 22px rgba(56, 189, 248, 0.18);
+  }
+  button.primary:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(56, 189, 248, 0.26); }
+  button.primary:active { transform: translateY(0); }
+  button.primary:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
+
+  .sync-log { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .sync-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12.5px; padding: 8px 11px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-soft);
+  }
+  .sync-row .name { color: var(--text); }
+  .sync-row .count { color: var(--forecast); font-weight: 600; }
+  .sync-row.fail .count { color: var(--alert); }
+  .sync-summary { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+
+  /* ---------- Search panel ---------- */
+  .search-stack { display: flex; flex-direction: column; gap: 10px; }
+  .field.query { font-size: 14.5px; padding: 13px 14px; }
+  .filter-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  select.field { flex: 0 0 auto; cursor: pointer; }
+  .toggle-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .toggle-row input { accent-color: var(--accent-a); }
 
   .summary-box {
     margin-top: 14px;
-    padding: 12px 14px;
-    background: var(--accent-soft);
-    border-radius: 8px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.10), rgba(129, 140, 248, 0.08));
+    border: 1px solid rgba(56, 189, 248, 0.25);
     font-size: 13.5px;
-    line-height: 1.5;
+    line-height: 1.55;
     display: none;
   }
-  .summary-box.visible { display: block; }
+  .summary-box.visible { display: block; animation: fade-in 0.25s ease; }
   .summary-box .label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--accent);
-    margin-bottom: 4px;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--accent-a); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
   }
 
-  .result-card, .alert-card {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin-top: 10px;
+  .results { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .result-card {
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.015);
+    animation: fade-in 0.3s ease;
+    transition: border-color 0.15s ease;
   }
-  .result-card .meta, .alert-card .meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-  }
+  .result-card:hover { border-color: var(--border); }
+  .result-card .meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 7px; }
+  .headline { font-weight: 650; font-size: 13.5px; line-height: 1.4; }
+  .location { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; margin: 2px 0 8px; }
+  .chunk-text { font-size: 13px; line-height: 1.55; color: var(--text-muted); white-space: pre-line; }
+
   .badge {
-    font-size: 10.5px;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 999px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
+    font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.4px; flex-shrink: 0;
   }
   .badge.alert { background: var(--alert-soft); color: var(--alert); }
   .badge.forecast { background: var(--forecast-soft); color: var(--forecast); }
-  .headline { font-weight: 600; font-size: 14px; }
-  .location { font-size: 12px; color: var(--text-muted); }
-  .chunk-text { font-size: 13.5px; line-height: 1.5; color: var(--text); white-space: pre-line; }
-  .similarity { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
-  .empty-state { font-size: 13px; color: var(--text-muted); padding: 8px 0; }
 
-  .feed-time { font-size: 11px; color: var(--text-muted); }
-  .new-pulse { animation: pulse 1.6s ease-out 2; }
+  .sim-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .sim-track { flex: 1; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+  .sim-fill { height: 100%; border-radius: 999px; background: var(--accent-gradient); }
+  .sim-label { font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .empty-state {
+    font-size: 12.5px; color: var(--text-muted); padding: 22px 10px; text-align: center;
+    border: 1px dashed var(--border); border-radius: var(--radius-md);
+  }
+  .error-text { color: var(--alert); font-size: 12.5px; margin-top: 8px; }
+
+  @keyframes fade-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- Feed strip ---------- */
+  .feed-panel { margin-top: 16px; }
+  .feed-scroll {
+    display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+  .feed-card {
+    flex: 0 0 230px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .feed-card .meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
+  .feed-card .headline { font-size: 12.5px; }
+  .feed-time { font-size: 11px; color: var(--text-faint); }
+  .new-pulse { animation: pulse 1.8s ease-out 2; }
   @keyframes pulse {
-    0% { background: var(--alert-soft); }
-    100% { background: transparent; }
+    0% { background: rgba(56, 189, 248, 0.16); border-color: rgba(56, 189, 248, 0.4); }
+    100% { background: rgba(255, 255, 255, 0.02); border-color: var(--border-soft); }
   }
 
-  .error-text { color: var(--alert); font-size: 13px; margin-top: 8px; }
+  footer {
+    margin-top: 30px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 11.5px;
+    color: var(--text-faint);
+    text-align: center;
+  }
+  footer a { color: var(--text-muted); }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>Weather Intelligence</h1>
-  <p>Semantic search over live NWS alerts &amp; forecasts</p>
-</header>
+<div class="shell">
 
-<div class="layout">
-  <!-- MAIN COLUMN: search -->
-  <div>
-    <div class="panel">
-      <h2>Search</h2>
-      <div class="search-row">
-        <input type="text" id="query-input" placeholder="e.g. flash flood risk this weekend">
-        <select id="topk-input">
-          <option value="3">3 results</option>
-          <option value="5" selected>5 results</option>
-          <option value="10">10 results</option>
-          <option value="20">20 results</option>
-        </select>
-        <select id="sourcetype-input">
-          <option value="">Any type</option>
-          <option value="alert">Alerts only</option>
-          <option value="forecast">Forecasts only</option>
-        </select>
-        <button id="search-btn">Search</button>
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 15.5C4.067 15.5 2.5 13.933 2.5 12C2.5 10.222 3.822 8.75 5.54 8.53C6.03 6.02 8.25 4.13 10.9 4.13C13.66 4.13 15.95 6.17 16.32 8.82C18.34 9.13 19.9 10.87 19.9 12.97C19.9 15.3 18.01 17.19 15.68 17.19H6.6" stroke="#04121a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 20L10.5 18M13 20L14.5 18M17 20L18.5 18" stroke="#04121a" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
       </div>
+      <div class="brand-text">
+        <h1>Weather Intelligence</h1>
+        <p>Semantic retrieval over live National Weather Service forecasts &amp; alerts</p>
+      </div>
+    </div>
+    <div class="status-pill">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Lakebase connected</span>
+    </div>
+  </header>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 3h7l4 4v14H7V3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 3v4h4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        Documents
+      </div>
+      <div class="stat-value" id="stat-documents">–</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="2.2" stroke="currentColor" stroke-width="1.6"/><circle cx="18" cy="6" r="2.2" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="18" r="2.2" stroke="currentColor" stroke-width="1.6"/><path d="M7.8 7.2L11 16.2M16.2 7.2L13 16.2M8.2 6H15.8" stroke="currentColor" stroke-width="1.4"/></svg>
+        Embeddings
+      </div>
+      <div class="stat-value" id="stat-embeddings">–</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="2.2" stroke="currentColor" stroke-width="1.6"/></svg>
+        Locations
+      </div>
+      <div class="stat-value" id="stat-locations">–</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.6"/><path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="1.6"/></svg>
+        Vector model
+      </div>
+      <div class="stat-value sub" id="stat-model">–</div>
+    </div>
+  </div>
+
+  <div class="layout">
+
+    <!-- SYNC -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Sync weather data</h2>
+        <span class="tag">NWS API</span>
+      </div>
+      <p class="panel-sub">Upsert current forecasts and geographically relevant active alerts. Re-running the sync is idempotent.</p>
+
+      <div class="chip-grid" id="location-chips"></div>
+
+      <div class="add-row">
+        <input type="text" id="custom-location" class="field" placeholder="Add a city, e.g. Denver, CO">
+        <button id="add-location-btn" class="primary" style="width:auto; padding:9px 14px;">Add</button>
+      </div>
+
+      <div class="limit-row">
+        <label for="sync-limit">Doc limit / city</label>
+        <input type="number" id="sync-limit" value="50" min="1" max="200">
+      </div>
+
+      <button id="sync-btn" class="primary">Sync Weather Data</button>
+
+      <div class="sync-log" id="sync-log"></div>
+    </div>
+
+    <!-- SEARCH -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Semantic search</h2>
+        <span class="tag">HNSW · Cosine</span>
+      </div>
+      <p class="panel-sub">Try concepts that don't have to match exact NWS wording — "dangerous rising water," "windy conditions tonight," or "storms this weekend."</p>
+
+      <div class="search-stack">
+        <input type="text" id="query-input" class="field query" placeholder="Natural-language weather intent…">
+        <div class="filter-row">
+          <select id="sourcetype-input" class="field">
+            <option value="">Any type</option>
+            <option value="alert">Alerts only</option>
+            <option value="forecast">Forecasts only</option>
+          </select>
+          <select id="topk-input" class="field">
+            <option value="3">Top 3</option>
+            <option value="5" selected>Top 5</option>
+            <option value="10">Top 10</option>
+            <option value="20">Top 20</option>
+          </select>
+          <button id="search-btn" class="primary" style="flex:1; min-width:120px;">Search</button>
+        </div>
+        <label class="toggle-row">
+          <input type="checkbox" id="summarize-toggle" checked>
+          Include an AI-generated summary of the results
+        </label>
+      </div>
+
       <div id="summary-box" class="summary-box">
-        <div class="label">Summary</div>
+        <div class="label">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3l1.8 5.6L19 10.5l-5.2 1.9L12 18l-1.8-5.6L5 10.5l5.2-1.9L12 3z" fill="currentColor"/></svg>
+          Summary
+        </div>
         <div id="summary-text"></div>
       </div>
+
       <div id="search-error" class="error-text"></div>
-      <div id="search-results"></div>
+      <div id="search-results" class="results"></div>
     </div>
+
   </div>
 
-  <!-- SIDEBAR: news feed -->
-  <div>
-    <div class="panel">
-      <h2>News Feed <span id="feed-status" class="feed-time"></span></h2>
-      <div id="feed-items"></div>
+  <div class="panel feed-panel">
+    <div class="panel-head">
+      <h2>Live feed</h2>
+      <span class="tag" id="feed-status">–</span>
     </div>
+    <p class="panel-sub">Most recently synced alerts and forecasts across the whole corpus.</p>
+    <div class="feed-scroll" id="feed-items"></div>
   </div>
+
+  <footer>
+    Weather Intelligence — NWS harvest → chunk → embed (sentence-transformers/all-MiniLM-L6-v2) → pgvector on Databricks Lakebase.
+  </footer>
+
 </div>
 
 <script>
+const DEFAULT_CHIP_LOCATIONS = ["Chicago, IL", "Austin, TX", "Miami, FL", "Denver, CO", "New York, NY", "Los Angeles, CA"];
+const selectedLocations = new Set(["Chicago, IL", "Austin, TX", "Miami, FL"]);
 const seenFeedIds = new Set();
 let firstFeedLoad = true;
 
@@ -218,6 +476,107 @@ function escapeHtml(str) {
   div.textContent = str || "";
   return div.innerHTML;
 }
+
+// ---------- Stats strip ----------
+function animateNumber(el, target) {
+  const start = parseInt(el.dataset.raw || "0", 10) || 0;
+  const duration = 500;
+  const t0 = performance.now();
+  function frame(now) {
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const value = Math.round(start + (target - start) * eased);
+    el.textContent = value.toLocaleString();
+    if (p < 1) requestAnimationFrame(frame);
+  }
+  el.dataset.raw = target;
+  requestAnimationFrame(frame);
+}
+
+async function loadStats() {
+  try {
+    const resp = await fetch("/weather/stats");
+    if (!resp.ok) throw new Error("stats unavailable");
+    const data = await resp.json();
+    animateNumber(document.getElementById("stat-documents"), data.documents || 0);
+    animateNumber(document.getElementById("stat-embeddings"), data.embeddings || 0);
+    animateNumber(document.getElementById("stat-locations"), data.locations || 0);
+    document.getElementById("stat-model").textContent =
+      (data.vector_model || "").split("/").pop() + " · " + data.vector_dim + "d";
+    document.getElementById("status-text").textContent = "Lakebase connected";
+    document.getElementById("status-dot").style.background = "var(--forecast)";
+  } catch (err) {
+    document.getElementById("status-text").textContent = "Lakebase unreachable";
+    document.getElementById("status-dot").style.background = "var(--alert)";
+  }
+}
+
+// ---------- Sync ----------
+function renderChips() {
+  const wrap = document.getElementById("location-chips");
+  wrap.innerHTML = "";
+  const all = new Set([...DEFAULT_CHIP_LOCATIONS, ...selectedLocations]);
+  all.forEach(loc => {
+    const chip = document.createElement("div");
+    chip.className = "chip" + (selectedLocations.has(loc) ? " active" : "");
+    chip.textContent = loc;
+    chip.addEventListener("click", () => {
+      if (selectedLocations.has(loc)) selectedLocations.delete(loc);
+      else selectedLocations.add(loc);
+      renderChips();
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+document.getElementById("add-location-btn").addEventListener("click", () => {
+  const input = document.getElementById("custom-location");
+  const val = input.value.trim();
+  if (!val) return;
+  selectedLocations.add(val);
+  input.value = "";
+  renderChips();
+});
+document.getElementById("custom-location").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); document.getElementById("add-location-btn").click(); }
+});
+
+async function runSync() {
+  const btn = document.getElementById("sync-btn");
+  const logEl = document.getElementById("sync-log");
+  const locations = Array.from(selectedLocations);
+  if (!locations.length) {
+    logEl.innerHTML = '<div class="error-text">Select or add at least one location.</div>';
+    return;
+  }
+  const limit = parseInt(document.getElementById("sync-limit").value, 10) || 50;
+
+  btn.disabled = true;
+  btn.textContent = "Syncing…";
+  logEl.innerHTML = "";
+
+  try {
+    const data = await postJSON("/weather/sync", { locations, limit });
+    const failedLocations = new Set((data.failures || []).map(f => f.location));
+    logEl.innerHTML = locations.map(loc => {
+      const failed = failedLocations.has(loc);
+      const failure = (data.failures || []).find(f => f.location === loc);
+      return `
+        <div class="sync-row ${failed ? "fail" : ""}">
+          <span class="name">${escapeHtml(loc)}</span>
+          <span class="count">${failed ? "failed: " + escapeHtml(failure.error) : "synced"}</span>
+        </div>`;
+    }).join("") + `<div class="sync-summary">Synced ${data.synced} document(s) across ${locations.length} location(s).</div>`;
+    loadStats();
+    pollFeed();
+  } catch (err) {
+    logEl.innerHTML = `<div class="error-text">${escapeHtml(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Sync Weather Data";
+  }
+}
+document.getElementById("sync-btn").addEventListener("click", runSync);
 
 // ---------- Search ----------
 async function runSearch() {
@@ -241,7 +600,8 @@ async function runSearch() {
   try {
     const topK = parseInt(document.getElementById("topk-input").value, 10);
     const sourceType = document.getElementById("sourcetype-input").value;
-    const body = { query, top_k: topK, summarize: true };
+    const summarize = document.getElementById("summarize-toggle").checked;
+    const body = { query, top_k: topK, summarize };
     if (sourceType) body.source_type = sourceType;
 
     const data = await postJSON("/weather/search", body);
@@ -257,22 +617,29 @@ async function runSearch() {
     if (data.low_confidence) {
       resultsEl.innerHTML = `
         <div class="empty-state">
-          No strong matches in the synced corpus for this search.
-          Sync a relevant city via POST /weather/sync, then search again.
+          No strong matches in the synced corpus for this search.<br>
+          Sync a relevant city on the left, then search again.
         </div>`;
     } else if (!data.results || data.results.length === 0) {
-      resultsEl.innerHTML = '<div class="empty-state">No results yet - nothing has been synced into the corpus.</div>';
+      resultsEl.innerHTML = '<div class="empty-state">No results yet — nothing has been synced into the corpus.</div>';
     } else {
-      resultsEl.innerHTML = data.results.map(r => `
+      resultsEl.innerHTML = data.results.map(r => {
+        const pct = (r.similarity * 100).toFixed(1);
+        const badgeClass = r.source_type === "forecast" ? "forecast" : "alert";
+        return `
         <div class="result-card">
           <div class="meta">
             <span class="headline">${escapeHtml(r.headline || "")}</span>
-            <span class="location">${escapeHtml(r.location || "")}</span>
+            <span class="badge ${badgeClass}">${escapeHtml(r.source_type || "")}</span>
           </div>
+          <div class="location">${escapeHtml(r.location || "")}</div>
           <div class="chunk-text">${escapeHtml(r.chunk_text || "")}</div>
-          <div class="similarity">similarity: ${(r.similarity * 100).toFixed(1)}%</div>
-        </div>
-      `).join("");
+          <div class="sim-row">
+            <div class="sim-track"><div class="sim-fill" style="width:${pct}%"></div></div>
+            <span class="sim-label">${pct}% match</span>
+          </div>
+        </div>`;
+      }).join("");
     }
   } catch (err) {
     errorEl.textContent = err.message;
@@ -287,15 +654,10 @@ document.getElementById("query-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") runSearch();
 });
 
-// ---------- News feed (polling, no websockets) ----------
-// Unscoped - shows the most recently synced items across the whole
-// corpus, alerts AND forecasts, whatever's actually there. No watchlist
-// concept anymore (see DECISIONS.md Phase 9), so no location filtering -
-// populating the corpus happens via POST /weather/sync (manually, via a
-// script, or the scheduled job), not through this UI.
+// ---------- Live feed (polling, no websockets) ----------
 function formatSyncedTime(isoString) {
-  if (!isoString) return "no data synced yet";
-  return "last synced " + new Date(isoString).toLocaleString();
+  if (!isoString) return "no data yet";
+  return "synced " + new Date(isoString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 async function pollFeed() {
@@ -307,17 +669,17 @@ async function pollFeed() {
     const items = data.items || [];
 
     if (!items.length) {
-      feedEl.innerHTML = '<div class="empty-state">Nothing synced yet. Run POST /weather/sync to populate the corpus.</div>';
+      feedEl.innerHTML = '<div class="empty-state" style="flex:1;">Nothing synced yet — use the panel above to populate the corpus.</div>';
     } else {
       feedEl.innerHTML = items.map(item => {
         const isNew = !firstFeedLoad && !seenFeedIds.has(item.id);
         const badgeClass = item.source_type === "forecast" ? "forecast" : "alert";
         return `
-          <div class="alert-card ${isNew ? "new-pulse" : ""}">
+          <div class="feed-card ${isNew ? "new-pulse" : ""}">
             <div class="meta">
-              <span class="headline">${escapeHtml(item.headline || "")}</span>
               <span class="badge ${badgeClass}">${escapeHtml(item.source_type || "")}</span>
             </div>
+            <div class="headline">${escapeHtml(item.headline || "")}</div>
             <div class="location">${escapeHtml(item.location || "")}</div>
           </div>
         `;
@@ -325,15 +687,18 @@ async function pollFeed() {
     }
     items.forEach(item => seenFeedIds.add(item.id));
     firstFeedLoad = false;
-    statusEl.textContent = "· " + formatSyncedTime(data.last_synced_at);
+    statusEl.textContent = formatSyncedTime(data.last_synced_at);
   } catch (err) {
-    statusEl.textContent = "· feed unavailable";
+    statusEl.textContent = "unavailable";
   }
 }
 
 // ---------- init ----------
+renderChips();
+loadStats();
 pollFeed();
 setInterval(pollFeed, 30000);
+setInterval(loadStats, 60000);
 </script>
 
 </body>

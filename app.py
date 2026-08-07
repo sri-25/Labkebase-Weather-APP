@@ -25,7 +25,7 @@ from flask import Flask, jsonify, render_template, request
 
 import lakebase
 from embed_pipeline import embed_documents_now
-from embedding import EMBEDDING_MODEL_NAME, embed_texts, get_model
+from embedding import EMBEDDING_DIM, EMBEDDING_MODEL_NAME, embed_texts, get_model
 from llm_summary import summarize as llm_summarize
 from weather_client import GeocodeError, WeatherClient
 
@@ -234,6 +234,36 @@ def _cleanup_expired_alerts_best_effort(context: str) -> None:
         logger.exception("Expired-alert cleanup failed for %s (non-fatal)", context)
 
 
+@app.route("/weather/stats", methods=["GET"])
+def stats():
+    """
+    Small read-only summary of what's actually in the corpus right now -
+    document count, embedding count, distinct location count, plus which
+    embedding model/dimension produced them. Powers the UI's stat strip
+    (see templates/index.html) so the page reflects real data instead of
+    a static claim about what the app "can" do.
+
+    Cheap on purpose: three COUNT queries, no joins, no vector math -
+    fine to call on every page load, unlike /weather/search.
+    """
+    ensure_weather_documents_table()
+    ensure_weather_embeddings_table()
+
+    doc_count = lakebase.run_query(f"SELECT COUNT(*) AS c FROM {WEATHER_DOCUMENTS_TABLE}")[0]["c"]
+    embedding_count = lakebase.run_query(f"SELECT COUNT(*) AS c FROM {WEATHER_EMBEDDINGS_TABLE}")[0]["c"]
+    location_count = lakebase.run_query(
+        f"SELECT COUNT(DISTINCT location) AS c FROM {WEATHER_DOCUMENTS_TABLE}"
+    )[0]["c"]
+
+    return jsonify({
+        "documents": doc_count,
+        "embeddings": embedding_count,
+        "locations": location_count,
+        "vector_model": EMBEDDING_MODEL_NAME,
+        "vector_dim": EMBEDDING_DIM,
+    })
+
+
 @app.route("/weather/feed/recent", methods=["GET"])
 def recent_feed():
     """
@@ -349,7 +379,7 @@ def search_weather():
     vector_literal = "[" + ",".join(str(x) for x in query_vector) + "]"
 
     sql = f"""
-        SELECT d.location, d.headline, d.narrative_text, e.chunk_text,
+        SELECT d.location, d.headline, d.narrative_text, d.source_type, e.chunk_text,
                1 - (e.embedding <=> %s::vector) AS similarity
         FROM {WEATHER_EMBEDDINGS_TABLE} e
         JOIN {WEATHER_DOCUMENTS_TABLE} d ON d.id = e.document_id
@@ -367,6 +397,7 @@ def search_weather():
         {
             "location": r["location"],
             "headline": r["headline"],
+            "source_type": r["source_type"],
             "chunk_text": r["chunk_text"],
             "similarity": float(r["similarity"]),
         }

@@ -28,6 +28,7 @@ sys.modules["lakebase"] = _fake_lakebase
 
 _fake_embedding = MagicMock()
 _fake_embedding.EMBEDDING_MODEL_NAME = "fake-model"
+_fake_embedding.EMBEDDING_DIM = 384
 _fake_embedding.get_model = MagicMock(return_value=None)
 _fake_embedding.embed_texts = MagicMock(return_value=[[0.1] * 384])
 sys.modules["embedding"] = _fake_embedding
@@ -50,6 +51,7 @@ def reset_mocks():
     _fake_lakebase.reset_mock(return_value=True, side_effect=True)
     _fake_embedding.reset_mock(return_value=True, side_effect=True)
     _fake_embedding.EMBEDDING_MODEL_NAME = "fake-model"
+    _fake_embedding.EMBEDDING_DIM = 384
     _fake_embedding.embed_texts.return_value = [[0.1] * 384]
     yield
 
@@ -58,6 +60,33 @@ def test_index_route_renders_html(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert b"Weather Intelligence" in resp.data
+
+
+def test_stats_returns_counts_and_model_info(client):
+    # Three run_query calls happen in order: documents count, embeddings
+    # count, distinct-location count - side_effect feeds them back in
+    # that order rather than one shared return_value.
+    _fake_lakebase.run_query.side_effect = [
+        [{"c": 43}],
+        [{"c": 51}],
+        [{"c": 3}],
+    ]
+    resp = client.get("/weather/stats")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data == {
+        "documents": 43,
+        "embeddings": 51,
+        "locations": 3,
+        "vector_model": "fake-model",
+        "vector_dim": 384,
+    }
+
+
+def test_stats_ensures_tables_before_querying(client):
+    _fake_lakebase.run_query.side_effect = [[{"c": 0}], [{"c": 0}], [{"c": 0}]]
+    client.get("/weather/stats")
+    assert _fake_lakebase.run_write.call_count >= 2  # documents + embeddings table setup
 
 
 def test_search_missing_query_returns_400(client):
@@ -119,6 +148,7 @@ def test_search_returns_expected_result_shape(client):
             "location": "Chicago, IL",
             "headline": "Flash Flood Warning",
             "narrative_text": "full text...",
+            "source_type": "alert",
             "chunk_text": "Turn around, don't drown.",
             "similarity": 0.87,
         }
@@ -130,6 +160,7 @@ def test_search_returns_expected_result_shape(client):
     assert results[0] == {
         "location": "Chicago, IL",
         "headline": "Flash Flood Warning",
+        "source_type": "alert",
         "chunk_text": "Turn around, don't drown.",
         "similarity": 0.87,
     }
@@ -148,7 +179,7 @@ def test_search_without_summarize_flag_omits_summary(client):
 def test_search_with_summarize_flag_calls_llm_and_includes_summary(client, monkeypatch):
     _fake_lakebase.run_query.return_value = [
         {"location": "Denver, CO", "headline": "Heat Advisory", "narrative_text": "x",
-         "chunk_text": "Hot today.", "similarity": 0.9}
+         "source_type": "alert", "chunk_text": "Hot today.", "similarity": 0.9}
     ]
     captured = {}
 
@@ -189,7 +220,7 @@ def test_search_summarize_failure_is_non_fatal(client, monkeypatch):
 def test_search_high_similarity_is_not_low_confidence(client):
     _fake_lakebase.run_query.return_value = [
         {"location": "Chicago, IL", "headline": "Tonight", "narrative_text": "x",
-         "chunk_text": "Thunderstorms likely.", "similarity": 0.665}
+         "source_type": "forecast", "chunk_text": "Thunderstorms likely.", "similarity": 0.665}
     ]
     resp = client.post("/weather/search", json={"query": "thunderstorms"})
     assert resp.get_json()["low_confidence"] is False
@@ -198,7 +229,7 @@ def test_search_high_similarity_is_not_low_confidence(client):
 def test_search_low_similarity_is_flagged_low_confidence(client):
     _fake_lakebase.run_query.return_value = [
         {"location": "Chicago, IL", "headline": "Tonight", "narrative_text": "x",
-         "chunk_text": "Mostly clear.", "similarity": 0.448}
+         "source_type": "forecast", "chunk_text": "Mostly clear.", "similarity": 0.448}
     ]
     resp = client.post("/weather/search", json={"query": "flood alert in Vermont"})
     body = resp.get_json()
