@@ -1,0 +1,31 @@
+{
+  "name": "Weather Intelligence - Scheduled Sync",
+  "tasks": [
+    {
+      "task_key": "sync_weather",
+      "spark_python_task": {
+        "python_file": "/Workspace/Repos/<your-databricks-username-or-repo-path>/vector_weather_rag_app/notebooks/sync_weather_job.py",
+        "parameters": ["--limit", "50"]
+      },
+      "new_cluster": {
+        "spark_version": "15.4.x-scala2.12",
+        "node_type_id": "m5.large",
+        "num_workers": 0,
+        "data_security_mode": "SINGLE_USER"
+      },
+      "libraries": [
+        { "pypi": { "package": "psycopg2-binary" } },
+        { "pypi": { "package": "sqlalchemy" } },
+        { "pypi": { "package": "requests" } },
+        { "pypi": { "package": "sentence-transformers" } },
+        { "pypi": { "package": "databricks-sdk" } }
+      ]
+    }
+  ],
+  "schedule": {
+    "quartz_cron_expression": "0 0 * * * ?",
+    "timezone_id": "UTC",
+    "pause_status": "UNPAUSED"
+  },
+  "max_concurrent_runs": 1
+}

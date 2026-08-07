@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather Intelligence</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #e2e5ea;
+    --text: #1c2027;
+    --text-muted: #6b7280;
+    --accent: #2563eb;
+    --accent-soft: #eaf0fe;
+    --alert: #dc2626;
+    --alert-soft: #fdeaea;
+    --forecast: #0d9488;
+    --forecast-soft: #e6f7f5;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 19px; font-weight: 700; }
+  header p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+    max-width: 1180px;
+    margin: 24px auto;
+    padding: 0 20px;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+  }
+
+  .search-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=text] {
+    flex: 1;
+    min-width: 180px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  select {
+    padding: 10px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    background: #fff;
+  }
+  button {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.9; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .summary-box {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--accent-soft);
+    border-radius: 8px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    display: none;
+  }
+  .summary-box.visible { display: block; }
+  .summary-box .label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .result-card, .alert-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 10px;
+  }
+  .result-card .meta, .alert-card .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .badge.alert { background: var(--alert-soft); color: var(--alert); }
+  .badge.forecast { background: var(--forecast-soft); color: var(--forecast); }
+  .headline { font-weight: 600; font-size: 14px; }
+  .location { font-size: 12px; color: var(--text-muted); }
+  .chunk-text { font-size: 13.5px; line-height: 1.5; color: var(--text); white-space: pre-line; }
+  .similarity { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+  .empty-state { font-size: 13px; color: var(--text-muted); padding: 8px 0; }
+
+  .feed-time { font-size: 11px; color: var(--text-muted); }
+  .new-pulse { animation: pulse 1.6s ease-out 2; }
+  @keyframes pulse {
+    0% { background: var(--alert-soft); }
+    100% { background: transparent; }
+  }
+
+  .error-text { color: var(--alert); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Weather Intelligence</h1>
+  <p>Semantic search over live NWS alerts &amp; forecasts</p>
+</header>
+
+<div class="layout">
+  <!-- MAIN COLUMN: search -->
+  <div>
+    <div class="panel">
+      <h2>Search</h2>
+      <div class="search-row">
+        <input type="text" id="query-input" placeholder="e.g. flash flood risk this weekend">
+        <select id="topk-input">
+          <option value="3">3 results</option>
+          <option value="5" selected>5 results</option>
+          <option value="10">10 results</option>
+          <option value="20">20 results</option>
+        </select>
+        <select id="sourcetype-input">
+          <option value="">Any type</option>
+          <option value="alert">Alerts only</option>
+          <option value="forecast">Forecasts only</option>
+        </select>
+        <button id="search-btn">Search</button>
+      </div>
+      <div id="summary-box" class="summary-box">
+        <div class="label">Summary</div>
+        <div id="summary-text"></div>
+      </div>
+      <div id="search-error" class="error-text"></div>
+      <div id="search-results"></div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR: news feed -->
+  <div>
+    <div class="panel">
+      <h2>News Feed <span id="feed-status" class="feed-time"></span></h2>
+      <div id="feed-items"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const seenFeedIds = new Set();
+let firstFeedLoad = true;
+
+async function postJSON(url, body) {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
+
+// ---------- Search ----------
+async function runSearch() {
+  const query = document.getElementById("query-input").value.trim();
+  const errorEl = document.getElementById("search-error");
+  const resultsEl = document.getElementById("search-results");
+  const summaryBox = document.getElementById("summary-box");
+  errorEl.textContent = "";
+  summaryBox.classList.remove("visible");
+
+  if (!query) {
+    errorEl.textContent = "Type something to search for.";
+    return;
+  }
+
+  const btn = document.getElementById("search-btn");
+  btn.disabled = true;
+  btn.textContent = "Searching…";
+  resultsEl.innerHTML = "";
+
+  try {
+    const topK = parseInt(document.getElementById("topk-input").value, 10);
+    const sourceType = document.getElementById("sourcetype-input").value;
+    const body = { query, top_k: topK, summarize: true };
+    if (sourceType) body.source_type = sourceType;
+
+    const data = await postJSON("/weather/search", body);
+
+    if (data.summary) {
+      document.getElementById("summary-text").textContent = data.summary;
+      summaryBox.classList.add("visible");
+    } else if (data.summary_error) {
+      document.getElementById("summary-text").textContent = data.summary_error;
+      summaryBox.classList.add("visible");
+    }
+
+    if (data.low_confidence) {
+      resultsEl.innerHTML = `
+        <div class="empty-state">
+          No strong matches in the synced corpus for this search.
+          Sync a relevant city via POST /weather/sync, then search again.
+        </div>`;
+    } else if (!data.results || data.results.length === 0) {
+      resultsEl.innerHTML = '<div class="empty-state">No results yet - nothing has been synced into the corpus.</div>';
+    } else {
+      resultsEl.innerHTML = data.results.map(r => `
+        <div class="result-card">
+          <div class="meta">
+            <span class="headline">${escapeHtml(r.headline || "")}</span>
+            <span class="location">${escapeHtml(r.location || "")}</span>
+          </div>
+          <div class="chunk-text">${escapeHtml(r.chunk_text || "")}</div>
+          <div class="similarity">similarity: ${(r.similarity * 100).toFixed(1)}%</div>
+        </div>
+      `).join("");
+    }
+  } catch (err) {
+    errorEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Search";
+  }
+}
+
+document.getElementById("search-btn").addEventListener("click", runSearch);
+document.getElementById("query-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") runSearch();
+});
+
+// ---------- News feed (polling, no websockets) ----------
+// Unscoped - shows the most recently synced items across the whole
+// corpus, alerts AND forecasts, whatever's actually there. No watchlist
+// concept anymore (see DECISIONS.md Phase 9), so no location filtering -
+// populating the corpus happens via POST /weather/sync (manually, via a
+// script, or the scheduled job), not through this UI.
+function formatSyncedTime(isoString) {
+  if (!isoString) return "no data synced yet";
+  return "last synced " + new Date(isoString).toLocaleString();
+}
+
+async function pollFeed() {
+  const feedEl = document.getElementById("feed-items");
+  const statusEl = document.getElementById("feed-status");
+  try {
+    const resp = await fetch("/weather/feed/recent");
+    const data = await resp.json();
+    const items = data.items || [];
+
+    if (!items.length) {
+      feedEl.innerHTML = '<div class="empty-state">Nothing synced yet. Run POST /weather/sync to populate the corpus.</div>';
+    } else {
+      feedEl.innerHTML = items.map(item => {
+        const isNew = !firstFeedLoad && !seenFeedIds.has(item.id);
+        const badgeClass = item.source_type === "forecast" ? "forecast" : "alert";
+        return `
+          <div class="alert-card ${isNew ? "new-pulse" : ""}">
+            <div class="meta">
+              <span class="headline">${escapeHtml(item.headline || "")}</span>
+              <span class="badge ${badgeClass}">${escapeHtml(item.source_type || "")}</span>
+            </div>
+            <div class="location">${escapeHtml(item.location || "")}</div>
+          </div>
+        `;
+      }).join("");
+    }
+    items.forEach(item => seenFeedIds.add(item.id));
+    firstFeedLoad = false;
+    statusEl.textContent = "· " + formatSyncedTime(data.last_synced_at);
+  } catch (err) {
+    statusEl.textContent = "· feed unavailable";
+  }
+}
+
+// ---------- init ----------
+pollFeed();
+setInterval(pollFeed, 30000);
+</script>
+
+</body>
+</html>
