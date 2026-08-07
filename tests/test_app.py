@@ -89,6 +89,26 @@ def test_stats_ensures_tables_before_querying(client):
     assert _fake_lakebase.run_write.call_count >= 2  # documents + embeddings table setup
 
 
+def test_stats_trends_returns_three_breakdowns(client):
+    _fake_lakebase.run_query.side_effect = [
+        [{"location": "Chicago, IL", "count": 14}, {"location": "Austin, TX", "count": 14}],
+        [{"source_type": "alert", "count": 20}, {"source_type": "forecast", "count": 23}],
+        [{"day": "2026-08-06", "source_type": "alert", "count": 5}],
+    ]
+    resp = client.get("/weather/stats/trends")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["locations"][0] == {"location": "Chicago, IL", "count": 14}
+    assert data["source_types"][1] == {"source_type": "forecast", "count": 23}
+    assert data["daily"][0]["count"] == 5
+
+
+def test_stats_trends_ensures_documents_table_before_querying(client):
+    _fake_lakebase.run_query.side_effect = [[], [], []]
+    client.get("/weather/stats/trends")
+    assert _fake_lakebase.run_write.call_count >= 1
+
+
 def test_search_missing_query_returns_400(client):
     resp = client.post("/weather/search", json={})
     assert resp.status_code == 400

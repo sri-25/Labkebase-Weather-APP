@@ -264,6 +264,54 @@ def stats():
     })
 
 
+@app.route("/weather/stats/trends", methods=["GET"])
+def stats_trends():
+    """
+    Aggregate breakdowns behind the UI's charts. Kept separate from
+    GET /weather/stats (which the UI polls every 60s) since these three
+    GROUP BY queries are heavier and only need to run once per page load.
+
+    Three real aggregations over weather_documents, no synthetic/filler
+    data:
+      - locations: document count per location (top 10)
+      - source_types: document count per source_type (alert vs forecast)
+      - daily: document count per day, split by source_type, last 14 days
+        (corpus growth/sync activity over time - NOT a weather-parameter
+        trend like temperature, which would require parsing NWS's raw
+        payload JSON; not attempted here since it's untested against live
+        data and a separate, riskier change from this one)
+    """
+    ensure_weather_documents_table()
+
+    locations = lakebase.run_query(
+        f"""
+        SELECT location, COUNT(*) AS count
+        FROM {WEATHER_DOCUMENTS_TABLE}
+        GROUP BY location
+        ORDER BY count DESC
+        LIMIT 10
+        """
+    )
+    source_types = lakebase.run_query(
+        f"""
+        SELECT source_type, COUNT(*) AS count
+        FROM {WEATHER_DOCUMENTS_TABLE}
+        GROUP BY source_type
+        """
+    )
+    daily = lakebase.run_query(
+        f"""
+        SELECT DATE(synced_at) AS day, source_type, COUNT(*) AS count
+        FROM {WEATHER_DOCUMENTS_TABLE}
+        WHERE synced_at >= now() - interval '14 days'
+        GROUP BY DATE(synced_at), source_type
+        ORDER BY day
+        """
+    )
+
+    return jsonify({"locations": locations, "source_types": source_types, "daily": daily})
+
+
 @app.route("/weather/feed/recent", methods=["GET"])
 def recent_feed():
     """

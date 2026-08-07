@@ -4,68 +4,51 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weather Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg: #090c11;
-    --bg-glow-a: rgba(56, 189, 248, 0.10);
-    --bg-glow-b: rgba(129, 140, 248, 0.10);
-    --panel: rgba(255, 255, 255, 0.035);
-    --panel-strong: rgba(255, 255, 255, 0.055);
-    --border: rgba(255, 255, 255, 0.09);
-    --border-soft: rgba(255, 255, 255, 0.06);
-    --text: #eaeef6;
-    --text-muted: #8b95a8;
-    --text-faint: #5b6478;
-    --accent-a: #38bdf8;
-    --accent-b: #818cf8;
+    --bg: #f6f4ee;
+    --surface: #ffffff;
+    --surface-alt: #fbfaf5;
+    --border: #e7e2d4;
+    --border-strong: #d9d3c1;
+    --text: #221e17;
+    --text-muted: #6f6a5b;
+    --text-faint: #a29c8b;
+    --accent-a: #e08a2e;
+    --accent-b: #c74f2c;
     --accent-gradient: linear-gradient(120deg, var(--accent-a), var(--accent-b));
-    --alert: #fb7185;
-    --alert-soft: rgba(251, 113, 133, 0.12);
-    --forecast: #34d399;
-    --forecast-soft: rgba(52, 211, 153, 0.12);
-    --radius-lg: 18px;
+    --accent-soft: #fbead9;
+    --alert: #c23b3b;
+    --alert-soft: #fbe9e7;
+    --forecast: #1f7a5c;
+    --forecast-soft: #e6f3ee;
+    --radius-lg: 16px;
     --radius-md: 12px;
     --radius-sm: 8px;
+    --shadow-card: 0 1px 2px rgba(34, 30, 23, 0.04), 0 6px 16px rgba(34, 30, 23, 0.05);
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", ui-sans-serif, sans-serif;
     background: var(--bg);
     color: var(--text);
     -webkit-font-smoothing: antialiased;
-    position: relative;
-    overflow-x: hidden;
-  }
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    background:
-      radial-gradient(650px 400px at 12% -5%, var(--bg-glow-a), transparent 60%),
-      radial-gradient(650px 400px at 88% 0%, var(--bg-glow-b), transparent 60%);
-    pointer-events: none;
-    z-index: 0;
   }
 
-  .shell { position: relative; z-index: 1; max-width: 1220px; margin: 0 auto; padding: 34px 24px 60px; }
+  .shell { max-width: 1220px; margin: 0 auto; padding: 32px 24px 60px; }
 
-  /* ---------- Header ---------- */
   header.top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 28px;
-    flex-wrap: wrap;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    margin-bottom: 26px; flex-wrap: wrap;
   }
   .brand { display: flex; align-items: center; gap: 12px; }
   .brand-mark {
     width: 38px; height: 38px; border-radius: 11px;
     background: var(--accent-gradient);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 6px 18px rgba(56, 189, 248, 0.28);
+    box-shadow: 0 6px 16px rgba(199, 79, 44, 0.28);
     flex-shrink: 0;
   }
   .brand-mark svg { width: 20px; height: 20px; }
@@ -74,64 +57,33 @@
 
   .status-pill {
     display: flex; align-items: center; gap: 7px;
-    padding: 7px 13px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    font-size: 12px;
-    color: var(--text-muted);
+    padding: 7px 13px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface);
+    font-size: 12px; color: var(--text-muted);
+    box-shadow: var(--shadow-card);
   }
-  .status-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--forecast);
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
-    animation: dot-pulse 2.4s ease-out infinite;
-  }
-  @keyframes dot-pulse {
-    0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45); }
-    70% { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
-  }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--forecast); }
 
-  /* ---------- Stat strip ---------- */
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-    margin-bottom: 22px;
-  }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
   @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
   .stat-card {
-    background: var(--panel);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-md);
-    padding: 16px 18px;
-    backdrop-filter: blur(14px);
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 16px 18px; box-shadow: var(--shadow-card);
   }
   .stat-card .stat-label {
-    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.6px; color: var(--text-faint); display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+    color: var(--text-faint); display: flex; align-items: center; gap: 6px;
   }
-  .stat-card .stat-label svg { width: 12px; height: 12px; opacity: 0.8; }
+  .stat-card .stat-label svg { width: 12px; height: 12px; }
   .stat-card .stat-value { font-size: 25px; font-weight: 700; margin-top: 6px; letter-spacing: -0.01em; }
-  .stat-card .stat-value.sub { font-size: 15px; font-weight: 600; color: var(--text); }
-  .stat-card .stat-value .unit { font-size: 12px; color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+  .stat-card .stat-value.sub { font-size: 15px; font-weight: 600; }
 
-  /* ---------- Layout ---------- */
-  .layout {
-    display: grid;
-    grid-template-columns: 360px 1fr;
-    gap: 16px;
-    align-items: start;
-  }
+  .layout { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
   @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
 
   .panel {
-    background: var(--panel);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-lg);
-    padding: 22px;
-    backdrop-filter: blur(14px);
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 22px; box-shadow: var(--shadow-card);
   }
   .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
   .panel-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
@@ -139,47 +91,25 @@
 
   .tag {
     font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
-    padding: 3px 9px; border-radius: 999px;
-    border: 1px solid var(--border);
-    color: var(--accent-a);
-    background: rgba(56, 189, 248, 0.08);
-    white-space: nowrap;
+    padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border-strong);
+    color: var(--accent-b); background: var(--accent-soft); white-space: nowrap;
   }
 
-  /* ---------- Sync panel ---------- */
   .chip-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 12px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: var(--panel-strong);
-    font-size: 12.5px;
-    color: var(--text-muted);
-    cursor: pointer;
-    user-select: none;
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+    border: 1px solid var(--border-strong); background: var(--surface-alt);
+    font-size: 12.5px; color: var(--text-muted); cursor: pointer; user-select: none;
     transition: all 0.15s ease;
   }
-  .chip:hover { border-color: rgba(56, 189, 248, 0.4); color: var(--text); }
-  .chip.active {
-    color: #04121a;
-    background: var(--accent-gradient);
-    border-color: transparent;
-    font-weight: 600;
-  }
-  .chip .rm { opacity: 0.6; font-size: 11px; }
+  .chip:hover { border-color: var(--accent-a); color: var(--text); }
+  .chip.active { color: #fff; background: var(--accent-gradient); border-color: transparent; font-weight: 600; }
 
   .add-row { display: flex; gap: 8px; margin-bottom: 14px; }
   .field {
-    flex: 1;
-    padding: 9px 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: rgba(0, 0, 0, 0.22);
-    color: var(--text);
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.15s ease;
+    flex: 1; padding: 9px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+    font-size: 13px; outline: none; transition: border-color 0.15s ease;
   }
   .field::placeholder { color: var(--text-faint); }
   .field:focus { border-color: var(--accent-a); }
@@ -188,41 +118,27 @@
   .limit-row label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
   .limit-row input[type=number] {
     width: 70px; padding: 8px 10px; border-radius: var(--radius-sm);
-    border: 1px solid var(--border); background: rgba(0,0,0,0.22); color: var(--text); font-size: 13px;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 13px;
   }
 
   button.primary {
-    width: 100%;
-    padding: 12px 16px;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: var(--accent-gradient);
-    color: #04121a;
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: -0.005em;
-    cursor: pointer;
-    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
-    box-shadow: 0 8px 22px rgba(56, 189, 248, 0.18);
+    width: 100%; padding: 12px 16px; border: none; border-radius: var(--radius-sm);
+    background: var(--accent-gradient); color: #fff; font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+    box-shadow: 0 8px 18px rgba(199, 79, 44, 0.22);
   }
-  button.primary:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(56, 189, 248, 0.26); }
-  button.primary:active { transform: translateY(0); }
+  button.primary:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(199, 79, 44, 0.3); }
   button.primary:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
 
   .sync-log { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
   .sync-row {
-    display: flex; align-items: center; justify-content: space-between;
-    font-size: 12.5px; padding: 8px 11px;
-    border-radius: var(--radius-sm);
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border-soft);
+    display: flex; align-items: center; justify-content: space-between; font-size: 12.5px;
+    padding: 8px 11px; border-radius: var(--radius-sm); background: var(--surface-alt); border: 1px solid var(--border);
   }
-  .sync-row .name { color: var(--text); }
   .sync-row .count { color: var(--forecast); font-weight: 600; }
   .sync-row.fail .count { color: var(--alert); }
   .sync-summary { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
 
-  /* ---------- Search panel ---------- */
   .search-stack { display: flex; flex-direction: column; gap: 10px; }
   .field.query { font-size: 14.5px; padding: 13px 14px; }
   .filter-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -231,34 +147,25 @@
   .toggle-row input { accent-color: var(--accent-a); }
 
   .summary-box {
-    margin-top: 14px;
-    padding: 14px 16px;
-    border-radius: var(--radius-md);
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.10), rgba(129, 140, 248, 0.08));
-    border: 1px solid rgba(56, 189, 248, 0.25);
-    font-size: 13.5px;
-    line-height: 1.55;
-    display: none;
+    margin-top: 14px; padding: 14px 16px; border-radius: var(--radius-md);
+    background: var(--accent-soft); border: 1px solid #f0cba3;
+    font-size: 13.5px; line-height: 1.55; display: none;
   }
-  .summary-box.visible { display: block; animation: fade-in 0.25s ease; }
+  .summary-box.visible { display: block; }
   .summary-box .label {
     font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
-    color: var(--accent-a); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+    color: var(--accent-b); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
   }
 
   .results { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
   .result-card {
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-md);
-    padding: 14px 16px;
-    background: rgba(255, 255, 255, 0.015);
-    animation: fade-in 0.3s ease;
-    transition: border-color 0.15s ease;
+    border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px;
+    background: var(--surface-alt); transition: border-color 0.15s ease;
   }
-  .result-card:hover { border-color: var(--border); }
-  .result-card .meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 7px; }
+  .result-card:hover { border-color: var(--border-strong); }
+  .result-card .meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
   .headline { font-weight: 650; font-size: 13.5px; line-height: 1.4; }
-  .location { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; margin: 2px 0 8px; }
+  .location { font-size: 11.5px; color: var(--text-muted); margin: 2px 0 8px; }
   .chunk-text { font-size: 13px; line-height: 1.55; color: var(--text-muted); white-space: pre-line; }
 
   .badge {
@@ -269,49 +176,35 @@
   .badge.forecast { background: var(--forecast-soft); color: var(--forecast); }
 
   .sim-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-  .sim-track { flex: 1; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+  .sim-track { flex: 1; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; }
   .sim-fill { height: 100%; border-radius: 999px; background: var(--accent-gradient); }
   .sim-label { font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   .empty-state {
     font-size: 12.5px; color: var(--text-muted); padding: 22px 10px; text-align: center;
-    border: 1px dashed var(--border); border-radius: var(--radius-md);
+    border: 1px dashed var(--border-strong); border-radius: var(--radius-md);
   }
   .error-text { color: var(--alert); font-size: 12.5px; margin-top: 8px; }
 
-  @keyframes fade-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  .trends-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; margin-top: 4px; }
+  @media (max-width: 900px) { .trends-grid { grid-template-columns: 1fr; } }
+  .chart-box { position: relative; height: 210px; }
+  .chart-title { font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px; }
 
-  /* ---------- Feed strip ---------- */
   .feed-panel { margin-top: 16px; }
-  .feed-scroll {
-    display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px;
-    scrollbar-width: thin;
-  }
+  .feed-scroll { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
   .feed-card {
-    flex: 0 0 230px;
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-md);
-    padding: 12px 14px;
-    background: rgba(255, 255, 255, 0.02);
+    flex: 0 0 230px; border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 12px 14px; background: var(--surface-alt);
   }
   .feed-card .meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
   .feed-card .headline { font-size: 12.5px; }
   .feed-time { font-size: 11px; color: var(--text-faint); }
-  .new-pulse { animation: pulse 1.8s ease-out 2; }
-  @keyframes pulse {
-    0% { background: rgba(56, 189, 248, 0.16); border-color: rgba(56, 189, 248, 0.4); }
-    100% { background: rgba(255, 255, 255, 0.02); border-color: var(--border-soft); }
-  }
 
   footer {
-    margin-top: 30px;
-    padding-top: 18px;
-    border-top: 1px solid var(--border-soft);
-    font-size: 11.5px;
-    color: var(--text-faint);
-    text-align: center;
+    margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--border);
+    font-size: 11.5px; color: var(--text-faint); text-align: center;
   }
-  footer a { color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -322,8 +215,8 @@
     <div class="brand">
       <div class="brand-mark">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M6 15.5C4.067 15.5 2.5 13.933 2.5 12C2.5 10.222 3.822 8.75 5.54 8.53C6.03 6.02 8.25 4.13 10.9 4.13C13.66 4.13 15.95 6.17 16.32 8.82C18.34 9.13 19.9 10.87 19.9 12.97C19.9 15.3 18.01 17.19 15.68 17.19H6.6" stroke="#04121a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M9 20L10.5 18M13 20L14.5 18M17 20L18.5 18" stroke="#04121a" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M6 15.5C4.067 15.5 2.5 13.933 2.5 12C2.5 10.222 3.822 8.75 5.54 8.53C6.03 6.02 8.25 4.13 10.9 4.13C13.66 4.13 15.95 6.17 16.32 8.82C18.34 9.13 19.9 10.87 19.9 12.97C19.9 15.3 18.01 17.19 15.68 17.19H6.6" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M9 20L10.5 18M13 20L14.5 18M17 20L18.5 18" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
       </div>
       <div class="brand-text">
@@ -370,7 +263,6 @@
 
   <div class="layout">
 
-    <!-- SYNC -->
     <div class="panel">
       <div class="panel-head">
         <h2>Sync weather data</h2>
@@ -395,7 +287,6 @@
       <div class="sync-log" id="sync-log"></div>
     </div>
 
-    <!-- SEARCH -->
     <div class="panel">
       <div class="panel-head">
         <h2>Semantic search</h2>
@@ -439,6 +330,24 @@
 
   </div>
 
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Trends</h2>
+      <span class="tag">Live from Lakebase</span>
+    </div>
+    <p class="panel-sub">Composition of the synced corpus — not a substitute for reading the actual forecasts and alerts, just a quick sense of what's been pulled in and when.</p>
+    <div class="trends-grid">
+      <div>
+        <div class="chart-title">Documents by location</div>
+        <div class="chart-box"><canvas id="chart-locations"></canvas></div>
+      </div>
+      <div>
+        <div class="chart-title">Sync activity, last 14 days</div>
+        <div class="chart-box"><canvas id="chart-daily"></canvas></div>
+      </div>
+    </div>
+  </div>
+
   <div class="panel feed-panel">
     <div class="panel-head">
       <h2>Live feed</h2>
@@ -459,6 +368,8 @@ const DEFAULT_CHIP_LOCATIONS = ["Chicago, IL", "Austin, TX", "Miami, FL", "Denve
 const selectedLocations = new Set(["Chicago, IL", "Austin, TX", "Miami, FL"]);
 const seenFeedIds = new Set();
 let firstFeedLoad = true;
+let locationChart = null;
+let dailyChart = null;
 
 async function postJSON(url, body) {
   const resp = await fetch(url, {
@@ -508,6 +419,75 @@ async function loadStats() {
   } catch (err) {
     document.getElementById("status-text").textContent = "Lakebase unreachable";
     document.getElementById("status-dot").style.background = "var(--alert)";
+  }
+}
+
+// ---------- Trends (charts) ----------
+function pivotDaily(rows) {
+  const days = Array.from(new Set(rows.map(r => r.day))).sort();
+  const byDay = {};
+  days.forEach(d => { byDay[d] = { alert: 0, forecast: 0 }; });
+  rows.forEach(r => {
+    if (byDay[r.day] && (r.source_type === "alert" || r.source_type === "forecast")) {
+      byDay[r.day][r.source_type] = r.count;
+    }
+  });
+  return {
+    labels: days.map(d => new Date(d).toLocaleDateString([], { month: "short", day: "numeric" })),
+    alerts: days.map(d => byDay[d].alert),
+    forecasts: days.map(d => byDay[d].forecast),
+  };
+}
+
+async function loadTrends() {
+  if (typeof Chart === "undefined") return;
+  try {
+    const resp = await fetch("/weather/stats/trends");
+    const data = await resp.json();
+
+    const locations = data.locations || [];
+    const locCtx = document.getElementById("chart-locations");
+    if (locationChart) locationChart.destroy();
+    locationChart = new Chart(locCtx, {
+      type: "bar",
+      data: {
+        labels: locations.map(l => l.location),
+        datasets: [{ data: locations.map(l => l.count), backgroundColor: "#e08a2e", borderRadius: 5, maxBarThickness: 22 }],
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } }, grid: { color: "#eee9da" } },
+          y: { ticks: { font: { size: 11 } }, grid: { display: false } },
+        },
+      },
+    });
+
+    const pivoted = pivotDaily(data.daily || []);
+    const dailyCtx = document.getElementById("chart-daily");
+    if (dailyChart) dailyChart.destroy();
+    dailyChart = new Chart(dailyCtx, {
+      type: "line",
+      data: {
+        labels: pivoted.labels,
+        datasets: [
+          { label: "Alerts", data: pivoted.alerts, borderColor: "#c23b3b", backgroundColor: "rgba(194,59,59,0.10)", fill: true, tension: 0.3, pointRadius: 2 },
+          { label: "Forecasts", data: pivoted.forecasts, borderColor: "#1f7a5c", backgroundColor: "rgba(31,122,92,0.10)", fill: true, tension: 0.3, pointRadius: 2 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 11 } } } },
+        scales: {
+          x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+          y: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } }, grid: { color: "#eee9da" } },
+        },
+      },
+    });
+  } catch (err) {
+    // non-fatal - charts just stay empty
   }
 }
 
@@ -568,6 +548,7 @@ async function runSync() {
         </div>`;
     }).join("") + `<div class="sync-summary">Synced ${data.synced} document(s) across ${locations.length} location(s).</div>`;
     loadStats();
+    loadTrends();
     pollFeed();
   } catch (err) {
     logEl.innerHTML = `<div class="error-text">${escapeHtml(err.message)}</div>`;
@@ -672,10 +653,9 @@ async function pollFeed() {
       feedEl.innerHTML = '<div class="empty-state" style="flex:1;">Nothing synced yet — use the panel above to populate the corpus.</div>';
     } else {
       feedEl.innerHTML = items.map(item => {
-        const isNew = !firstFeedLoad && !seenFeedIds.has(item.id);
         const badgeClass = item.source_type === "forecast" ? "forecast" : "alert";
         return `
-          <div class="feed-card ${isNew ? "new-pulse" : ""}">
+          <div class="feed-card">
             <div class="meta">
               <span class="badge ${badgeClass}">${escapeHtml(item.source_type || "")}</span>
             </div>
@@ -696,6 +676,7 @@ async function pollFeed() {
 // ---------- init ----------
 renderChips();
 loadStats();
+loadTrends();
 pollFeed();
 setInterval(pollFeed, 30000);
 setInterval(loadStats, 60000);

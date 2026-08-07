@@ -1430,3 +1430,83 @@ project, and consistent with how the scheduled Job is already deployed
 - Not yet deployed live - next step is the human creating the app via
   the Databricks Apps UI, granting the two resource permissions above,
   and deploying from the existing workspace folder.
+
+---
+
+## Phase 13 — UI feedback round 2: light theme + real trend charts
+
+First live look at the Phase 11 redesign (dark glass theme) prompted
+direct feedback: it read too close to the dark reference screenshot it
+was meant to only take inspiration from, and the human wanted actual
+data visualization ("graphs weather trends or something"), not just
+restyled cards.
+
+### Decision: warm light theme, not a second dark attempt
+Switched to a warm off-white background (`#f6f4ee`, not stark white),
+ink-brown text, and an amber/terracotta accent gradient instead of the
+previous sky-blue/indigo one - genuinely different palette family from
+both reference screenshots and the Phase 11 attempt, not just an inverted
+version of the same design. Flat white cards with a soft shadow replace
+the glass-blur panels (glassmorphism doesn't read well on light
+backgrounds anyway).
+
+### Feature: `GET /weather/stats/trends` + two Chart.js charts
+Added a "Trends" panel between the sync/search row and the live feed,
+backed by a new endpoint (three `GROUP BY` queries: documents per
+location, per source_type, and per day for the last 14 days - see
+app.py's `stats_trends()` docstring). Rendered via Chart.js (loaded from
+cdnjs, matching this project's existing external-CDN precedent) as a
+horizontal bar chart (documents by location) and a two-series area chart
+(alerts vs. forecasts synced per day).
+
+**Deliberately did NOT build a literal temperature-trend chart**, even
+though "weather trends" was the human's own phrasing - that would need
+parsing structured fields (temperature, wind speed, precipitation
+probability) out of `weather_documents.payload`, the raw NWS API JSON
+blob, which has never been tested against live data in this project (only
+`narrative_text` has ever been read out of that payload). Untested JSONB
+field access this close to submission risked shipping a chart that either
+crashes on a missing key or silently mislabels units - worse than not
+having the feature. The two charts that *did* ship use only columns
+already proven solid (`location`, `source_type`, `synced_at`), so "real
+trends, honestly derived from existing verified data" over "impressive
+sounding chart, unverified against real payloads."
+
+Verified via 2 new tests (`test_stats_trends_returns_three_breakdowns`,
+`test_stats_trends_ensures_documents_table_before_querying`) -
+104/104 passing. Not yet live-verified against real trend data (needs
+several days of real sync history to look meaningful - a single day's
+data will show as a single point, which is expected, not broken).
+
+### Investigating: "rain" search (alerts only) didn't surface a live Severe Thunderstorm Watch
+Live UI test: searching "rain" with the alerts-only filter returned
+`low_confidence: true` and an honest LLM summary saying the closest
+matches were air-quality/ozone alerts - even though a "Severe
+Thunderstorm Watch" alert for New York was visible in the same session's
+Live Feed. Two possible explanations, not yet distinguished:
+1. The thunderstorm watch document was synced but its embedding write
+   silently failed (`_embed_now_best_effort` swallows exceptions by
+   design - see Phase 4 - so a slow/flaky embed call during that
+   particular sync would leave it permanently unsearchable until the
+   batch script catches it).
+2. It genuinely is embedded, but MiniLM (a small, general-purpose, not
+   weather-domain-tuned model) just doesn't score "rain" close enough to
+   "Severe Thunderstorm Watch" text - a known, already-documented
+   property of this model on short formulaic NWS text (see Phase 0's
+   `MIN_SIMILARITY` reasoning).
+**Next step (not yet done):** run `python notebooks/ingest_weather_embeddings.py`
+(no `--all`) - if it finds and backfills unembedded documents, that
+confirms case 1; if it finds zero, case 2 is confirmed and the honest
+answer is "the small model has real limits on short alert text," not a
+bug to chase further.
+
+### Noted, not fixed: sync feels slow
+Expected, not a bug: each `/weather/sync` call does NWS API calls +
+Lakebase writes + CPU-only sentence-transformers embedding, all
+synchronously within one HTTP request/response cycle (see Phase 4's
+`_embed_now_best_effort` - inline by design, so newly-synced data is
+searchable immediately rather than only after the next batch job run).
+For a handful of cities this is several seconds, not instant. Left as-is
+for the homework's scope; a background/async embed queue would fix the
+perceived latency but is new infrastructure this late, not a quick patch -
+noted here as a known limitation rather than silently ignored.
