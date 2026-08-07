@@ -16,6 +16,7 @@
       "spec": {
         "client": "5",
         "dependencies": [
+          "flask",
           "psycopg2-binary",
           "sqlalchemy",
           "requests",

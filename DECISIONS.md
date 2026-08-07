@@ -1176,8 +1176,28 @@ pattern (`sync_weather_job.py`, `ingest_weather_embeddings.py`,
 Job task); left `scripts/*.py` alone since those are local-only manual
 utilities where `__file__` is always defined. 100/100 tests still passing.
 
+### Bug found live: `ModuleNotFoundError: No module named 'flask'`
+Got past the `__file__` fix and the actual import chain, then died on
+`from app import ... ` -> `app.py`'s own `from flask import Flask, ...`.
+Root cause: `sync_weather_job.py` imports from `app.py` to reuse
+`_sync_one_location` (the documented "known wart" - see Phase 7), and
+`app.py` is the Flask app file, so it imports Flask at module level even
+though the job itself never touches Flask/HTTP anything. `flask` was
+simply never added to `resources/sync_weather_job.json`'s dependency list,
+since nobody was thinking of the job as "needing a web framework."
+**Fix:** added `flask` to the `environments[].spec.dependencies` list.
+Cross-checked every other import across `app.py` and everything it
+transitively pulls in (`lakebase`, `embed_pipeline`, `embedding`,
+`llm_summary`, `weather_client`) against the dependency list to catch any
+other gaps in one pass rather than one-at-a-time - confirmed
+`sentence-transformers` (lazily imported inside `embedding.get_model()`,
+so it wouldn't show up in a naive top-of-file import grep) and everything
+else was already covered.
+
 ### Remaining
-- Redeploy with this fix and re-run - not yet confirmed working end to
-  end on real infra.
+- Job's `environments` spec changed, which the existing job (deployed via
+  `jobs create`) doesn't pick up automatically - needs the job
+  deleted+recreated (or `jobs reset`) with the updated JSON, then re-run.
+  Not yet confirmed working end to end on real infra.
 - Stretch: HNSW benchmark - built (`notebooks/hnsw_benchmark.py`), not yet
   run against live data.
