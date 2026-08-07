@@ -1111,9 +1111,28 @@ moved files verified to still parse/import cleanly.
 - Stretch: HNSW benchmark - built (`notebooks/hnsw_benchmark.py`), not yet
   run against live data (needs real row counts/timings, meaningless
   against a mock).
-- Repo needs to exist on GitHub and be connected as a Databricks Repo
-  before the scheduled job's `python_file` path
-  (`/Workspace/Repos/<username>/...`) can point at anything real. This
-  sandbox has no `gh` CLI/GitHub credentials - `git init` + local commits
-  can happen here, but `git push` needs to run from the human's own
-  terminal.
+- ~~Repo needs to exist on GitHub~~ - DONE. Pushed to
+  `github.com/sri-25/Labkebase-Weather-APP` (main branch, 2 commits) from
+  the human's own terminal (this sandbox has no `gh` CLI/GitHub
+  credentials, so `git init` + local commits happened here, `git push`
+  happened on their machine). Also added a root `README.md` (GitHub only
+  auto-renders a file named exactly `README.md` on the repo landing page -
+  `README_WEATHER.md` alone wouldn't show up there, even though it
+  satisfies the homework spec's own deliverable wording).
+
+### Learning: Databricks Repos land under `/Workspace/Users/<email>/`, not `/Workspace/Repos/`
+Same "provisioning model changed since the reference docs were written"
+pattern as the Lakebase `postgres` CLI note in Phase 1 - added via
+Workspace -> Repos -> Add Repo, the human's repo landed at
+`/Workspace/Users/srijan2554@gmail.com/Labkebase-Weather-APP`, not the
+older `/Workspace/Repos/<username>/<repo>` convention this file's
+placeholder assumed. Updated `resources/sync_weather_job.json`'s
+`python_file` path to match the real location instead of guessing.
+
+### Remaining
+- `node_type_id` (m5.large) and `python_file` path are both now real
+  values, not placeholders - ready to deploy via `databricks jobs create
+  --json @resources/sync_weather_job.json`, then verify once with
+  `databricks jobs run-now`.
+- Stretch: HNSW benchmark - built (`notebooks/hnsw_benchmark.py`), not yet
+  run against live data.

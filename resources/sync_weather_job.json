@@ -4,7 +4,7 @@
     {
       "task_key": "sync_weather",
       "spark_python_task": {
-        "python_file": "/Workspace/Repos/<your-databricks-username-or-repo-path>/vector_weather_rag_app/notebooks/sync_weather_job.py",
+        "python_file": "/Workspace/Users/srijan2554@gmail.com/Labkebase-Weather-APP/notebooks/sync_weather_job.py",
         "parameters": ["--limit", "50"]
       },
       "new_cluster": {
