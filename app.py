@@ -206,6 +206,7 @@ def _sync_one_location(client: WeatherClient, location: str, limit: int) -> tupl
     written = _upsert_documents_batch(documents)
     _embed_now_best_effort(documents, location)
     _cleanup_expired_alerts_best_effort(location)
+    _cleanup_expired_forecasts_best_effort(location)
     return written, None
 
 
@@ -232,6 +233,18 @@ def _cleanup_expired_alerts_best_effort(context: str) -> None:
             logger.info("Cleaned up %d expired alert(s) after syncing %s", deleted, context)
     except Exception:
         logger.exception("Expired-alert cleanup failed for %s (non-fatal)", context)
+
+
+def _cleanup_expired_forecasts_best_effort(context: str) -> None:
+    """Same best-effort shape as _cleanup_expired_alerts_best_effort - a
+    slow/flaky cleanup DELETE shouldn't fail the sync request that
+    triggered it."""
+    try:
+        deleted = cleanup_expired_forecasts()
+        if deleted:
+            logger.info("Cleaned up %d expired forecast(s) after syncing %s", deleted, context)
+    except Exception:
+        logger.exception("Expired-forecast cleanup failed for %s (non-fatal)", context)
 
 
 @app.route("/weather/stats", methods=["GET"])
@@ -379,6 +392,49 @@ def cleanup_expired_alerts() -> int:
         WHERE source_type = 'alert'
           AND effective_at IS NOT NULL
           AND effective_at < now()
+        """
+    )
+
+
+def cleanup_expired_forecasts() -> int:
+    """
+    Delete forecast-period documents once that specific period has ended,
+    using NWS's own `endTime` for the period (read out of `payload`, the
+    raw NWS forecast-period JSON - see WeatherClient.normalize_forecast_period)
+    rather than a blanket "older than N hours" cutoff.
+
+    Why endTime and not a fixed cutoff: forecast periods aren't a fixed
+    length - an overnight "Tonight" period might span 6 hours, a daytime
+    "Monday" period spans 12 - so a single fixed cutoff would either
+    delete short periods while they're still current, or leave long-past
+    periods around for a day+ after they stopped being relevant. endTime
+    is a stable, NWS-documented field present on every forecast period
+    (the same trust level as startTime, already used as effective_at
+    elsewhere in this file) - not new/unproven data, just a second field
+    read out of the same payload blob. `payload ? 'endTime'` (JSONB key
+    existence) guards against the rare row missing it rather than letting
+    the cast fail the whole cleanup.
+
+    weather_embeddings rows go with them automatically via the existing
+    ON DELETE CASCADE foreign key, same as cleanup_expired_alerts() - so
+    a stale forecast can't be searched, summarized, or shown in the feed
+    once its period has actually passed. This closes the gap where an
+    LLM summary could otherwise be handed a superseded forecast as if it
+    were current.
+
+    Run opportunistically after every sync (see
+    _cleanup_expired_forecasts_best_effort), same shape and same
+    reasoning as cleanup_expired_alerts() - there's no separate
+    scheduler/cron infra to run this on its own timer, and running a
+    DELETE on every read (the feed is polled every ~30s) would be
+    wasteful.
+    """
+    return lakebase.run_write(
+        f"""
+        DELETE FROM {WEATHER_DOCUMENTS_TABLE}
+        WHERE source_type = 'forecast'
+          AND payload ? 'endTime'
+          AND (payload->>'endTime')::timestamptz < now()
         """
     )
 

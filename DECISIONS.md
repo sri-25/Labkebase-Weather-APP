@@ -1510,6 +1510,50 @@ problem. Worth naming plainly in README_WEATHER.md's limitations section
 if it isn't already, since it's a real, defensible thing to say in a
 submission rather than something to hide.
 
+### Feature: forecast cleanup (`cleanup_expired_forecasts`) - closes the stale-forecast gap
+The human asked directly how to prevent the LLM from being handed stale
+data, and specifically how to decide when a forecast period should be
+considered expired ("maybe by the next day - how will you decide it?").
+A fixed "N hours" or "next day" cutoff was considered and rejected:
+forecast periods aren't a fixed length (an overnight "Tonight" period can
+span ~6 hours, a daytime "Monday" period ~12), so any single fixed cutoff
+would either delete short periods while they're still current or leave
+long-past ones around for a day or more after they stopped being
+relevant.
+
+**Decision: use each period's own NWS-reported `endTime`.** It's already
+present in `payload` (the raw NWS forecast-period JSON, stored verbatim
+on every forecast document) - the same field family and trust level as
+`startTime`, which this project has used as `effective_at` since Phase 2.
+`cleanup_expired_forecasts()` deletes a forecast document once
+`(payload->>'endTime')::timestamptz < now()`, guarded by a
+`payload ? 'endTime'` existence check so a row missing the field (should
+never happen per NWS's documented schema, but not proven against every
+possible response) doesn't fail the whole cleanup. Wired into
+`_sync_one_location()` as a fourth best-effort step alongside the
+existing embed and alert-cleanup steps - same shape, same
+"non-fatal, logged, doesn't fail the sync request" pattern as
+`_cleanup_expired_alerts_best_effort`. `weather_embeddings` rows cascade
+automatically via the existing FK, exactly like alert cleanup - so a
+stale forecast becomes unsearchable the moment its period ends, closing
+the actual risk the human raised: search (and therefore the LLM summary)
+could previously surface a superseded forecast as if it were current.
+
+This also effectively resolves the long-standing "forecast document IDs
+go stale" limitation from Phase 2/README_WEATHER.md - the IDs still
+change on every NWS regeneration as documented, but the old rows they
+leave behind no longer linger indefinitely.
+
+Verified via 4 new tests (`test_cleanup_expired_forecasts_uses_payload_end_time_not_effective_at`,
+`test_sync_triggers_expired_forecast_cleanup`,
+`test_forecast_cleanup_failure_does_not_fail_the_sync_request`, plus the
+existing alert-cleanup tests re-verified alongside) - 107/107 passing.
+Not yet live-verified - `payload->>'endTime'` has never been read from a
+real NWS response in this project before (only `startTime`/`effective_at`
+had been exercised live); needs a real sync + a wait (or a manually
+backdated test row) to confirm the cast and predicate behave against
+actual Lakebase data, not just the mocked shape the tests assert against.
+
 ### Noted, not fixed: sync feels slow
 Expected, not a bug: each `/weather/sync` call does NWS API calls +
 Lakebase writes + CPU-only sentence-transformers embedding, all

@@ -179,7 +179,7 @@ Optional `"source_type": "alert"` or `""forecast"` narrows results to one type.
 
 ## Known limitations / future improvements
 
-- **Forecast document IDs go stale.** The synthesized forecast ID is stable across re-syncs *within* one NWS forecast cycle, but changes when NWS regenerates the forecast package (~twice daily) — old period rows aren't deleted, just no longer "current." A scheduled cleanup job (delete forecast documents older than N hours) would fix this.
+- ~~Forecast document IDs go stale.~~ **Fixed.** The synthesized forecast ID is still stable across re-syncs *within* one NWS forecast cycle but changes when NWS regenerates the package (~twice daily) — but superseded periods are now deleted automatically (`cleanup_expired_forecasts()`, runs after every sync, deletes a forecast period once its own NWS-reported `endTime` has passed). Same cascade-delete mechanism as the existing alert cleanup. This closes a real risk: without it, a stale forecast could outscore the current one in search and get handed to the LLM summary as if it were current.
 - **Geocoding coverage.** Only 3 cities have static coordinates; everything else depends on the Census geocoder being reachable and returning a match. US-only.
 - **No embedding staleness detection.** If a document's `narrative_text` changes (e.g. an alert gets updated) but its `id` stays the same, the ingestion script's "find unembedded documents" query won't catch it, since it only looks for documents with *zero* embedding rows, not *outdated* ones. A content hash comparison would close this gap.
 - **Stretch goals not yet built:** scheduled Databricks Job for automatic re-sync, `GET /weather/search` with an LLM-generated summary (basic RAG), and an HNSW vs. no-index latency benchmark.

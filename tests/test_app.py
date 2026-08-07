@@ -389,6 +389,21 @@ def test_cleanup_expired_alerts_deletes_only_expired_alert_documents():
     assert "DELETE FROM weather_documents" in sql
 
 
+def test_cleanup_expired_forecasts_uses_payload_end_time_not_effective_at():
+    """Forecasts use their own endTime (from payload, NWS's raw period
+    JSON) as the cutoff, not effective_at (which is startTime, not an
+    expiration) and not a blanket fixed-hours cutoff - see
+    cleanup_expired_forecasts()'s docstring for why a fixed cutoff would
+    be wrong for periods of varying length."""
+    _fake_lakebase.run_write.return_value = 7
+    deleted = flask_app_module.cleanup_expired_forecasts()
+    assert deleted == 7
+    sql = _fake_lakebase.run_write.call_args[0][0]
+    assert "source_type = 'forecast'" in sql
+    assert "payload->>'endTime'" in sql
+    assert "DELETE FROM weather_documents" in sql
+
+
 def test_sync_triggers_expired_alert_cleanup(client, monkeypatch):
     monkeypatch.setattr(flask_app_module.WeatherClient, "sync_location", lambda self, loc, limit=50: [])
     monkeypatch.setattr(flask_app_module, "embed_documents_now", lambda docs: 0)
@@ -398,6 +413,30 @@ def test_sync_triggers_expired_alert_cleanup(client, monkeypatch):
 
     client.post("/weather/sync", json={"locations": ["Denver, CO"]})
     assert cleanup_calls == [1]
+
+
+def test_sync_triggers_expired_forecast_cleanup(client, monkeypatch):
+    monkeypatch.setattr(flask_app_module.WeatherClient, "sync_location", lambda self, loc, limit=50: [])
+    monkeypatch.setattr(flask_app_module, "embed_documents_now", lambda docs: 0)
+
+    cleanup_calls = []
+    monkeypatch.setattr(flask_app_module, "cleanup_expired_forecasts", lambda: cleanup_calls.append(1) or 0)
+
+    client.post("/weather/sync", json={"locations": ["Denver, CO"]})
+    assert cleanup_calls == [1]
+
+
+def test_forecast_cleanup_failure_does_not_fail_the_sync_request(client, monkeypatch):
+    monkeypatch.setattr(flask_app_module.WeatherClient, "sync_location", lambda self, loc, limit=50: [])
+    monkeypatch.setattr(flask_app_module, "embed_documents_now", lambda docs: 0)
+
+    def failing_cleanup():
+        raise RuntimeError("db timeout")
+
+    monkeypatch.setattr(flask_app_module, "cleanup_expired_forecasts", failing_cleanup)
+
+    resp = client.post("/weather/sync", json={"locations": ["Denver, CO"]})
+    assert resp.status_code == 200
 
 
 def test_cleanup_failure_does_not_fail_the_sync_request(client, monkeypatch):
