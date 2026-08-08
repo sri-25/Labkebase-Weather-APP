@@ -1576,7 +1576,27 @@ EXISTS`, matching the same idempotent pattern `ensure_weather_embeddings_table()
 already uses. If the app wins the race and recreates it first, the
 benchmark just measures against that same index instead of erroring.
 107/107 tests still passing (no test asserted on the exact absence of
-`IF NOT EXISTS`). Not yet re-run against live data to get final numbers.
+`IF NOT EXISTS`).
+
+### Verification: HNSW benchmark, live results
+Re-ran clean against the deployed app (167 embedding rows, 20 queries/phase):
+```
+WITHOUT HNSW index: mean=611.48ms  median=592.43ms  min=530.71ms  max=830.79ms
+WITH HNSW index   : mean=655.49ms  median=605.89ms  min=526.53ms  max=1572.45ms
+```
+Index was not faster - matches the docstring's own honesty note (HNSW's
+advantage grows with row count/dimensionality; a small corpus can make a
+sequential scan look just as fast or faster once index overhead is
+counted). Also worth flagging: these absolute numbers (500ms+ per query)
+are almost certainly dominated by connection overhead, not vector search
+time - `lakebase.py` opens a brand-new Postgres connection (and re-fetches
+the Lakebase secret from Databricks) for every single query, no pooling.
+Both phases pay this cost equally, so the WITH-vs-WITHOUT comparison is
+still fair, but "600ms" isn't a measure of the index's actual query
+latency in isolation. A connection pool (e.g. psycopg_pool, or reusing
+one long-lived connection) would give a cleaner read - not built here,
+noted as a real limitation in README_WEATHER.md rather than left
+unexplained. **Stretch goal #3 (HNSW benchmark) done and live-verified.**
 
 ### Noted, not fixed: sync feels slow
 Expected, not a bug: each `/weather/sync` call does NWS API calls +
