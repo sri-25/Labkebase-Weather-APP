@@ -45,6 +45,20 @@ curl -X POST http://localhost:8000/weather/search \
 
 `templates/index.html` is a search/sync UI with live stats and trend charts — not a required deliverable, just a convenience for demoing without curl. Can also be deployed as a persistent Databricks App (`app.yaml`).
 
+## Screenshots
+
+Search UI, live against real synced data:
+
+![Semantic search - forecast query](screenshots/ui_search_rain.png)
+
+![Semantic search - alert query with AI summary](screenshots/ui_search_thunderstorm.png)
+
+Underlying Lakebase tables (Postgres + pgvector), same live instance:
+
+![weather_documents table](screenshots/lakebase_weather_documents.png)
+
+![weather_embeddings table](screenshots/lakebase_weather_embeddings.png)
+
 ## Project layout
 
 ```
